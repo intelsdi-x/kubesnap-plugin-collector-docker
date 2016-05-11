@@ -1,0 +1,1 @@
+# kubesnap-plugin-collector-docker
