@@ -24,7 +24,7 @@ package main
 import (
 	"os"
 
-	"github.com/intelsdi-x/snap-plugin-collector-docker/docker"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/docker"
 	"github.com/intelsdi-x/snap/control/plugin"
 )
 
