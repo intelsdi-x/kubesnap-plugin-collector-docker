@@ -28,7 +28,7 @@ import (
 	"os"
 	"time"
 	"errors"
-	"github.com/intelsdi-x/snap-plugin-collector-docker/client"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/client"
 	"github.com/intelsdi-x/snap-plugin-utilities/ns"
 	"github.com/intelsdi-x/snap/control/plugin"
 	"github.com/intelsdi-x/snap/control/plugin/cpolicy"

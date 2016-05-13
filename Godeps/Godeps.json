@@ -1,5 +1,5 @@
 {
-	"ImportPath": "github.com/intelsdi-x/snap-plugin-collector-docker",
+	"ImportPath": "github.com/intelsdi-x/kubesnap-plugin-collector-docker",
 	"GoVersion": "go1.5",
 	"Deps": [
 		{
