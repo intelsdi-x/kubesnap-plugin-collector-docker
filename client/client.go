@@ -78,7 +78,7 @@ func (dc *dockerClient) ListContainersAsMap() (map[string]docker.APIContainers, 
 	}
 
 	if len(containers) == 0 {
-		return nil, errors.New("No docker conatiner found")
+		return nil, errors.New("No docker container found")
 	}
 
 	return containers, nil
