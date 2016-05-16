@@ -34,6 +34,8 @@ import (
 	"github.com/intelsdi-x/snap/control/plugin/cpolicy"
 
 	dock "github.com/fsouza/go-dockerclient"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
+	//"github.com/docker/docker/vendor/src/github.com/opencontainers/runc/libcontainer/cgroups"
 )
 
 const (
@@ -42,19 +44,19 @@ const (
 	// namespace plugin name
 	NS_PLUGIN = "docker"
 	// version of plugin
-	VERSION = 4
+	VERSION = 5
 )
 
 
 
 type containerData struct {
-	Id         string  	`json:"-"`
-	Status     string  	`json:"status"`
-	Created    int64   	`json:"creation_time"`
-	Image      string  	`json:"image_name"`
-	SizeRw     int64   	`json:"size_rw"`
-	SizeRootFs int64   	`json:"size_root_fs"`    // basic info about the container (status, uptime, etc.)
-	Stats      *dock.Stats 	`json:"stats"`		// container statistics (cpu usage, memory usage, network stats, etc.)
+	Id         string  		`json:"-"`
+	Status     string  		`json:"status"`
+	Created    int64   		`json:"creation_time"`
+	Image      string  		`json:"image_name"`
+	SizeRw     int64   		`json:"size_rw"`
+	SizeRootFs int64   		`json:"size_root_fs"`    // basic info about the container (status, uptime, etc.)
+	Stats      *wrapper.Statistics 	`json:"stats"`		// container statistics (cpu usage, memory usage, network stats, etc.)
 }
 
 // docker collector plugin type
@@ -176,6 +178,28 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 	// for each requested id set adequate item into docker.container struct with stats
 	for _, rid := range rids {
 
+		if contSpec, exist := d.list[rid]; !exist {
+			return nil, fmt.Errorf("Docker container does not exist, container_id=", rid)
+		} else {
+			stats, err := d.client.GetStatsFromContainer(contSpec.ID)
+			if err != nil {
+				return nil, err
+			}
+			// set new item to docker.container structure
+			d.containers[rid] = containerData{
+				Id:         contSpec.ID,
+				Status:     contSpec.Status,
+				Created:    contSpec.Created,
+				Image:      contSpec.Image,
+				SizeRw:     contSpec.SizeRw,
+				SizeRootFs: contSpec.SizeRootFs,
+				Stats:      stats,
+			}
+
+
+		}
+		/*
+		//stare
 		if contSpec, exist := d.list[rid]; exist {
 			// set new item to docker.container structure
 			d.containers[rid] = containerData{
@@ -185,7 +209,7 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 				Image:      contSpec.Image,
 				SizeRw:     contSpec.SizeRw,
 				SizeRootFs: contSpec.SizeRootFs,
-				Stats:      new(dock.Stats),
+				Stats:      wrapper.NewStatistics(),
 			}
 
 		} else {
@@ -193,11 +217,12 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 		}
 
 
-		stats, err := d.client.GetContainerStats(rid, 0)
+		stats, err := d.client.GetStatsFromContainer(rid)
 		if err != nil {
 			return nil, err
 		}
 		*d.containers[rid].Stats = *stats
+		*/
 	}
 
 
@@ -209,17 +234,62 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 		}
 
 		for _, id := range ids {
-			metricName := mt.Namespace().Strings()[3:]
+			statsType := mt.Namespace().Strings()[3]
+			metricName := mt.Namespace().Strings()[4:]
+
 			// Extract values by namespace from temporary struct and create metrics
 
-				metric := plugin.MetricType{
-					Timestamp_: time.Now(),
-					Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(metricName...),
-					Data_:      ns.GetValueByNamespace(d.containers[id], metricName),
-					Tags_: 		mt.Tags(),
-					Config_: mt.Config(),
-				}
-				metrics = append(metrics, metric)
+			switch statsType {
+			case "spec": //get docker specification info
+
+					metric := plugin.MetricType{
+						Timestamp_: time.Now(),
+						Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
+						Data_:      ns.GetValueByNamespace(d.containers[id], metricName),
+						Tags_: 	 mt.Tags(),
+						Config_: mt.Config(),
+					}
+					metrics = append(metrics, metric)
+
+			case "cgroups": // get docker cgroups stats
+					metric := plugin.MetricType{
+						Timestamp_: time.Now(),
+						Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
+						Data_:       ns.GetValueByNamespace(d.containers[id].Stats.CgroupStats, metricName),
+						Tags_: 	 mt.Tags(),
+						Config_: mt.Config(),
+					}
+					metrics = append(metrics, metric)
+			case "network": //get docker network information
+					// support wildcard on interface name
+					netInterfaces := []string{}
+					if metricName[0] == "*" {
+						for netInterface := range d.containers[id].Stats.Network {
+							netInterfaces = append(netInterfaces, netInterface)
+						}
+					} else {
+						netInterfaces = append(netInterfaces, metricName[0])
+					}
+
+					for _, net := range netInterfaces {
+						metric := plugin.MetricType{
+							Timestamp_: time.Now(),
+							Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(statsType, net, metricName[1]),
+							Data_:      ns.GetValueByNamespace(d.containers[id].Stats.Network[net], metricName[1:]),
+							Tags_: 	 mt.Tags(),
+							Config_: mt.Config(),
+						}
+						metrics = append(metrics, metric)
+
+					}
+
+
+			default:
+
+
+			}
+
+
 		}
 
 	}
@@ -247,19 +317,26 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 
 	//prefix := strings.Join([]string{NS_VENDOR, NS_VENDOR, "*"}, "/")
 
-	availableMetrics := []string{}
-	// take names of available metrics based on tags for containerData type; do not add prefix (empty string)
-	ns.FromCompositionTags(containerData{Stats: new(dock.Stats)}, "", &availableMetrics)
+	specificationMetrics := []string{}
+	cgroupsMetrics := []string{}
+	networkMetrics := []string{}
 
-	fmt.Fprintln(os.Stderr, "Debug, len(namespaces1)=", len(availableMetrics))
-	for index, ns := range availableMetrics {
+
+	data := containerData{Stats: wrapper.NewStatistics()}
+	// take names of available metrics based on tags for containerData type; do not add prefix (empty string)
+	ns.FromCompositionTags(containerData{}, "spec", &specificationMetrics)
+	ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
+	ns.FromCompositionTags(wrapper.NetworkInterface{}, "", &networkMetrics)
+
+	fmt.Fprintln(os.Stderr, "Debug, len(namespaces1)=", len(specificationMetrics))
+	for index, ns := range specificationMetrics {
 		fmt.Fprintln(os.Stderr, "Debug, ns[", index, "]=",ns)
 	}
 
-	for _, metricName := range availableMetrics {
+	for _, metricName := range specificationMetrics {
 
 		ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
-			AddDynamicElement("docker_id", "the id of docker container").
+			AddDynamicElement("docker_id", "an id of docker container").
 			AddStaticElements(strings.Split(metricName, "/")...)
 
 		metricType := plugin.MetricType{
@@ -269,143 +346,46 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 		metricTypes = append(metricTypes, metricType)
 	}
 
-	/*
-	//test, _ := d.client.ListContainersAsMap()
-	data := containerData{id:"aa", created: 1543}
-	ns.FromCompositionTags(data, prefix, &namespaces)
-	fmt.Fprintln(os.Stderr, "Debug, len(namespaces)=", len(namespaces))
-	for nr, ns := range namespaces {
-		fmt.Fprintln(os.Stderr, "Debug, iza ns[", nr, "]=", ns)
-	}
-*/
-	/*
-	// list of metrics
-	for _, statName := range availableStats {
+	for _, metricName := range cgroupsMetrics {
 
 		ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
-			AddDynamicElement("docker_id", "id of docker container").
-			AddStaticElements(statName...)
+			AddDynamicElement("docker_id", "an id of docker container").
+			AddStaticElements(strings.Split(metricName, "/")...)
 
 		metricType := plugin.MetricType{
 			Namespace_: ns,
 		}
 
 		metricTypes = append(metricTypes, metricType)
-	}*/
+	}
+
+	for _, metricName := range networkMetrics {
+
+		ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
+			AddDynamicElement("docker_id", "an id of docker container").
+			AddStaticElement("network").
+			AddDynamicElement("network_interface", "a name of network interface").
+			AddStaticElements(strings.Split(metricName, "/")...)
+
+		metricType := plugin.MetricType{
+			Namespace_: ns,
+		}
+
+		metricTypes = append(metricTypes, metricType)
+	}
 
 
+
+	container, err := d.client.InspectContainer("2cfc558de806")
+	fmt.Fprintln(os.Stderr, "Debug, Iza- container=", container)
+	fmt.Fprintln(os.Stderr, "Debug, Iza- container, err=",err)
+	//d.client.InspectContainer("c6fb376e32f1")
+
+
+	//inna próba
+	d.client.GetStatsFromContainer("2cfc558de8061264d5d50dcca60f591cb8d63afa037fec463cf396482aef5075")
 	return metricTypes, nil
 
-	/*
-
-
-		for _, cont := range containers {
-			//todo obsługa błedu
-			dockerShortID, _ := getShortId(cont.Id)
-
-			d.containers[dockerShortID] = containerData{
-				id: 		cont.Id,
-				status: 	cont.Status,
-				created: 	cont.Created,
-				image: 		cont.Image,
-				sizeRw: 	cont.SizeRw,
-				sizeRootFs: 	cont.SizeRootFs,
-				stats: 		new(dock.Stats),
-			}
-
-
-			fmt.Fprint(os.Stderr, " Debug, container id=", cont.Id)
-			fmt.Fprint(os.Stderr, " Debug, container data=", d.containers[cont.Id])
-		}
-
-		//todo do przerzucenia później
-
-
-		cl, err := dock.NewClient(endpoint)
-		if err != nil {
-			fmt.Println("[ERROR] Could not create docker client!")
-			return nil, err
-		}
-
-		errChan := make(chan error, 1)
-		statsChan := make(chan *dock.Stats)
-		done := make(chan bool)
-
-		id := containers[0].Id
-		go func() {
-			//todo container id tymczasowo
-			errChan <- cl.Stats(dock.StatsOptions{id, statsChan, true, done, 0})
-			close(errChan)
-		}()
-
-		for {
-			stats, ok := <-statsChan
-
-			if !ok {
-				break
-			}
-
-			//set stats
-
-			fmt.Fprintf(os.Stderr, "Debug, izaPRZED zebrane statystyki memory: %+s", stats.MemoryStats)
-			fmt.Fprintf(os.Stderr, "/n/n")
-			fmt.Fprintf(os.Stderr, "Debug, izaPRZED zebrane statystyki cpu: %+s", stats.CPUStats)
-
-			*d.containers[id].stats = *stats
-			fmt.Fprintf(os.Stderr, "stats=", stats)
-			fmt.Fprintln(os.Stderr, "")
-			fmt.Fprintln(os.Stderr, "")
-			fmt.Fprintf(os.Stderr, "Debug, iza zebrane statystyki memory: %+s", d.containers[id].stats.MemoryStats)
-			fmt.Fprintf(os.Stderr, "/n/n")
-			fmt.Fprintf(os.Stderr, "Debug, iza zebrane statystyki cpu: %+s", d.containers[id].stats.CPUStats)
-			//todo iza tymczasowo
-			//resultStats = append(resultStats, stats)
-		}
-		err = <-errChan
-		if err != nil {
-			return nil, err
-		}
-
-	*/
-
-	/*		//todo czy to jest potyrzebne
-	// list all running containers
-	_, err := dockerClient.ListContainers()
-
-	if err != nil {
-		return nil, err
-	}
-
-	for _, container := range d.containersInfo {
-		// calling getStats will populate stats object
-		// parsing it one will get info on available namespace
-		d.getStats(container.Id)
-
-		// marshal-unmarshal to get map with json tags as keys
-		jsondata, _ := json.Marshal(d.stats)
-		var jmap map[string]interface{}
-		json.Unmarshal(jsondata, &jmap)
-
-		// parse map to get namespace strings
-		d.tools.Map2Namespace(jmap, container.Id[:12], &namespaces)
-	}
-
-	// wildcard for container ID
-	if len(d.containersInfo) > 0 {
-		jsondata, _ := json.Marshal(d.stats)
-		var jmap map[string]interface{}
-		json.Unmarshal(jsondata, &jmap)
-		d.tools.Map2Namespace(jmap, "*", &namespaces)
-	}
-
-	for _, namespace := range namespaces {
-		// construct full namespace
-		fullNs := filepath.Join(NS_VENDOR, NS_PLUGIN, namespace)
-		metricTypes = append(metricTypes, plugin.MetricType{Namespace_: core.NewNamespace(strings.Split(fullNs, "/")...)})
-	}
-	*/
-
-	return metricTypes, nil
 }
 
 func (d *docker) GetConfigPolicy() (*cpolicy.ConfigPolicy, error) {
