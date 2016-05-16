@@ -138,11 +138,12 @@ func (dc *dockerClient) FindCgroupMountpoint(subsystem string) (string, error) {
 // checks whether /run/systemd/system/ exists and is a directory.
 // http://www.freedesktop.org/software/systemd/man/sd_booted.html
 func isRunningSystemd() bool {
-	fi, err := os.Lstat("/run/systemd/system")
-	if err != nil {
-		return false
-	}
-	return fi.IsDir()
+return true
+//	fi, err := os.Lstat("/run/systemd/system")
+//	if err != nil {
+//		return false
+//	}
+//	return fi.IsDir()
 }
 
 
