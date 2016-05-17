@@ -51,8 +51,8 @@ type Stats interface {
 
 
 type Statistics struct {
-	Network  map[string]NetworkInterface
-	CgroupStats *cgroups.Stats
+	Network  map[string]NetworkInterface `json:"network"`
+	CgroupStats *cgroups.Stats 	     `json:"cgroups"`
 }
 
 
