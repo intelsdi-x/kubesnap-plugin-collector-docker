@@ -53,7 +53,7 @@ const (
 type containerData struct {
 	Id         string  		`json:"-"`
 	Status     string  		`json:"status"`
-	Created    time.Time   		`json:"creation_time"`
+	Created    int64   		`json:"creation_time"`
 	Image      string  		`json:"image_name"`
 	SizeRw     int64   		`json:"size_rw"`
 	SizeRootFs int64   		`json:"size_root_fs"`    // basic info about the container (status, uptime, etc.)
@@ -191,7 +191,7 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 			d.containers[rid] = containerData{
 				Id:         contSpec.ID,
 				Status:     contSpec.Status,
-				Created:    time.Unix(contSpec.Created, 0),
+				Created:    contSpec.Created,
 				Image:      contSpec.Image,
 				SizeRw:     contSpec.SizeRw,
 				SizeRootFs: contSpec.SizeRootFs,
@@ -218,14 +218,14 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 
 			switch statsType {
 			case "spec": //get docker specification info
+				metric := plugin.MetricType{
+					Timestamp_: time.Now(),
+					Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
+					Data_:      ns.GetValueByNamespace(d.containers[id], metricName),
+					Tags_:      mt.Tags(),
+					Config_:    mt.Config(),
+				}
 
-					metric := plugin.MetricType{
-						Timestamp_: time.Now(),
-						Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
-						Data_:      ns.GetValueByNamespace(d.containers[id], metricName),
-						Tags_: 	 mt.Tags(),
-						Config_: mt.Config(),
-					}
 					metrics = append(metrics, metric)
 
 			case "cgroups": // get docker cgroups stats
