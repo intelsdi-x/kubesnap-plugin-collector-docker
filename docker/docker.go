@@ -191,7 +191,7 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 			d.containers[rid] = containerData{
 				Id:         contSpec.ID,
 				Status:     contSpec.Status,
-				Created:    time.Unix(contSpec.Created,0).String(),
+				Created:    time.Unix(contSpec.Created,0).Format("2006-01-02T15:04:05Z07:00"),
 				Image:      contSpec.Image,
 				SizeRw:     contSpec.SizeRw,
 				SizeRootFs: contSpec.SizeRootFs,

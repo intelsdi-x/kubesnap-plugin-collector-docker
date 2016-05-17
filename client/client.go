@@ -29,6 +29,8 @@ import (
 	"strings"
 	"strconv"
 	"bufio"
+	//"syscall"
+	//"io/ioutil"
 
 
 	"github.com/fsouza/go-dockerclient"
@@ -49,6 +51,14 @@ const (
 	overlayStorageDriver      storageDriver = "overlay"
 	zfsStorageDriver          storageDriver = "zfs"
 )
+
+const (
+	// The read write layers exist here.
+	aufsRWLayer = "diff"
+	// Path to the directory where docker stores log files if the json logging driver is enabled.
+	pathToContainersDir = "containers"
+)
+
 
 type DockerClientInterface interface {
 	ListContainersAsMap() (map[string]docker.APIContainers, error)
@@ -213,8 +223,14 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 
 	container, err := dc.InspectContainer(id)
 
-	// getFsStats(container.Driver, container.)
+	fmt.Fprintln(os.Stderr, "Debug inspect: container.Driver=%+v", container.Driver)
 
+	fmt.Fprintln(os.Stderr, "Debug inspect: container.HostConfig.Devices=%+v", container.HostConfig.Devices)
+	fmt.Fprintln(os.Stderr, "Debug inspect: container.Mount[]=%+v", container.Mounts)
+	fmt.Fprintln(os.Stderr, "Debug inspect: container.HostConfig.VolumesFrom[]=%+v", container.HostConfig.VolumesFrom)
+
+	fmt.Fprintln(os.Stderr, "Debug inspect: container.SysInitPath=%+v", container.SysInitPath)
+	fmt.Fprintln(os.Stderr, "Debug inspect: container.Path=%+v", container.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -242,23 +258,49 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 	fmt.Fprintln(os.Stderr, "Iza- wylazl")
 	return stats, nil
 }
-
 /*
-func getFsStats(storageDiver string, storageDir string) (stats *info.ContainerStats) error {
+
+func getRwLayerID(containerID, storageDir string, sd storageDriver, dockerVersion []int) (string, error) {
+	const (
+		// Docker version >=1.10.0 have a randomized ID for the root fs of a container.
+		randomizedRWLayerMinorVersion = 10
+		rwLayerIDFile                 = "mount-id"
+	)
+	if (dockerVersion[0] <= 1) && (dockerVersion[1] < randomizedRWLayerMinorVersion) {
+		return containerID, nil
+	}
+
+	bytes, err := ioutil.ReadFile(filepath.Join(storageDir, "image", string(sd), "layerdb", "mounts", containerID, rwLayerIDFile))
+	if err != nil {
+		return "", fmt.Errorf("failed to identify the read-write layer ID for container %q. - %v", containerID, err)
+	}
+	return string(bytes), err
+}
+
+func getFsStats(container *docker.Container) error {
+
+	storageDiver := container.Driver
+	storageDir := "/"
+
+	rwLayerID, err := getRwLayerID(container.ID, storageDir, storageDriver, []int{})
+	if err != nil {
+		return nil, err
+	}
 
 	var rootfsStorageDir string
+
 	switch storageDriver {
 	case aufsStorageDriver:
-		rootfsStorageDir = path.Join(storageDir, string(aufsStorageDriver), aufsRWLayer, rwLayerID)
+		rootfsStorageDir = filepath.Join(storageDir, string(aufsStorageDriver), aufsRWLayer, rwLayerID)
 	case overlayStorageDriver:
-		rootfsStorageDir = path.Join(storageDir, string(overlayStorageDriver), rwLayerID)
+		rootfsStorageDir = filepath.Join(storageDir, string(overlayStorageDriver), rwLayerID)
 	default:
 	return nil
 	}
 
 
 
-	deviceInfo, err := self.fsInfo.GetDirFsDevice(self.rootfsStorageDir)
+	deviceInfo, err := GetDirFsDevice(rootfsStorageDir)
 	if err != nil {
 		return err
 	}
@@ -289,9 +331,25 @@ func getFsStats(storageDiver string, storageDir string) (stats *info.ContainerSt
 
 	return nil
 }
+*/
+/*
+mounts, err := mount.GetMounts()
+	if err != nil {
+		return nil, err
+	}
+	fsInfo := &RealFsInfo{
+		partitions: make(map[string]partition, 0),
+		labels:     make(map[string]string, 0),
+		dmsetup:    &defaultDmsetupClient{},
+	}
 
+	fsInfo.addSystemRootLabel(mounts)
+	fsInfo.addDockerImagesLabel(context, mounts)
+	fsInfo.addRktImagesLabel(context, mounts)
 
-func (self *RealFsInfo) GetDirFsDevice(dir string) (*DeviceInfo, error) {
+*/
+/*
+func GetDirFsDevice(dir string) (*DeviceInfo, error) {
 	buf := new(syscall.Stat_t)
 	err := syscall.Stat(dir, buf)
 	if err != nil {
@@ -305,6 +363,14 @@ func (self *RealFsInfo) GetDirFsDevice(dir string) (*DeviceInfo, error) {
 		}
 	}
 	return nil, fmt.Errorf("could not find device with major: %d, minor: %d in cached partitions map", major, minor)
+}
+
+func major(devNumber uint64) uint {
+	return uint((devNumber >> 8) & 0xfff)
+}
+
+func minor(devNumber uint64) uint {
+	return uint((devNumber & 0xff) | ((devNumber >> 12) & 0xfff00))
 }
 */
 
