@@ -53,7 +53,7 @@ const (
 type containerData struct {
 	Id         string  		`json:"-"`
 	Status     string  		`json:"status"`
-	Created    int64   		`json:"creation_time"`
+	Created    string   		`json:"creation_time"`
 	Image      string  		`json:"image_name"`
 	SizeRw     int64   		`json:"size_rw"`
 	SizeRootFs int64   		`json:"size_root_fs"`    // basic info about the container (status, uptime, etc.)
@@ -191,7 +191,7 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 			d.containers[rid] = containerData{
 				Id:         contSpec.ID,
 				Status:     contSpec.Status,
-				Created:    contSpec.Created,
+				Created:    time.Unix(contSpec.Created,0).String(),
 				Image:      contSpec.Image,
 				SizeRw:     contSpec.SizeRw,
 				SizeRootFs: contSpec.SizeRootFs,
