@@ -40,6 +40,15 @@ import (
 
 const endpoint string = "unix:///var/run/docker.sock"
 
+type storageDriver string
+
+const (
+
+	devicemapperStorageDriver storageDriver = "devicemapper"
+	aufsStorageDriver         storageDriver = "aufs"
+	overlayStorageDriver      storageDriver = "overlay"
+	zfsStorageDriver          storageDriver = "zfs"
+)
 
 type DockerClientInterface interface {
 	ListContainersAsMap() (map[string]docker.APIContainers, error)
@@ -203,6 +212,8 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 
 	container, err := dc.InspectContainer(id)
 
+	// getFsStats(container.Driver, container.)
+
 	if err != nil {
 		return nil, err
 	}
@@ -218,6 +229,7 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 		fmt.Fprintf(os.Stderr, "Unable to get network stats from pid %d: %v", pid, err)
 	}
 
+
 	fmt.Fprintln(os.Stderr, "netStats len=", len(stats.Network))
 	for _, netStat := range stats.Network {
 		fmt.Fprintln(os.Stderr, "netStat name=" ,netStat.Name)
@@ -229,6 +241,71 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 	fmt.Fprintln(os.Stderr, "Iza- wylazl")
 	return stats, nil
 }
+
+/*
+func getFsStats(storageDiver string, storageDir string) (stats *info.ContainerStats) error {
+
+	var rootfsStorageDir string
+	switch storageDriver {
+	case aufsStorageDriver:
+		rootfsStorageDir = path.Join(storageDir, string(aufsStorageDriver), aufsRWLayer, rwLayerID)
+	case overlayStorageDriver:
+		rootfsStorageDir = path.Join(storageDir, string(overlayStorageDriver), rwLayerID)
+	default:
+	return nil
+	}
+
+
+
+	deviceInfo, err := self.fsInfo.GetDirFsDevice(self.rootfsStorageDir)
+	if err != nil {
+		return err
+	}
+
+	mi, err := self.machineInfoFactory.GetMachineInfo()
+	if err != nil {
+		return err
+	}
+
+	var (
+		limit  uint64
+		fsType string
+	)
+
+	// Docker does not impose any filesystem limits for containers. So use capacity as limit.
+	for _, fs := range mi.Filesystems {
+		if fs.Device == deviceInfo.Device {
+			limit = fs.Capacity
+			fsType = fs.Type
+			break
+		}
+	}
+
+	fsStat := info.FsStats{Device: deviceInfo.Device, Type: fsType, Limit: limit}
+
+	fsStat.BaseUsage, fsStat.Usage = self.fsHandler.Usage()
+	stats.Filesystem = append(stats.Filesystem, fsStat)
+
+	return nil
+}
+
+
+func (self *RealFsInfo) GetDirFsDevice(dir string) (*DeviceInfo, error) {
+	buf := new(syscall.Stat_t)
+	err := syscall.Stat(dir, buf)
+	if err != nil {
+		return nil, fmt.Errorf("stat failed on %s with error: %s", dir, err)
+	}
+	major := major(buf.Dev)
+	minor := minor(buf.Dev)
+	for device, partition := range self.partitions {
+		if partition.major == major && partition.minor == minor {
+			return &DeviceInfo{device, major, minor}, nil
+		}
+	}
+	return nil, fmt.Errorf("could not find device with major: %d, minor: %d in cached partitions map", major, minor)
+}
+*/
 
 func networkStatsFromProc(rootFs string, pid int) (map[string]wrapper.NetworkInterface, error) {
 
@@ -253,19 +330,8 @@ func networkStatsFromProc(rootFs string, pid int) (map[string]wrapper.NetworkInt
 	return netStats, nil
 }
 
-/*
-func getNetworkInterfaceStats(iface.HostInterfaceName) {
-
-}
-*/
-
-func (dc *dockerClient) InspectContainer(id string) (*docker.Container, error) {
-	fmt.Fprintln(os.Stderr, "Debug, wlazl hurra")
-	return dc.cl. InspectContainer(id)
-}
-
-/*
 func isIgnoredDevice(ifName string) bool {
+	ignoredDevicePrefixes := []string{"lo", "veth", "docker"}
 	for _, prefix := range ignoredDevicePrefixes {
 		if strings.HasPrefix(strings.ToLower(ifName), prefix) {
 			return true
@@ -273,7 +339,12 @@ func isIgnoredDevice(ifName string) bool {
 	}
 	return false
 }
-*/
+
+
+func (dc *dockerClient) InspectContainer(id string) (*docker.Container, error) {
+	fmt.Fprintln(os.Stderr, "Debug, wlazl hurra")
+	return dc.cl. InspectContainer(id)
+}
 
 func scanInterfaceStats(netStatsFile string) ([]wrapper.NetworkInterface, error) {
 	file, err := os.Open(netStatsFile)
@@ -304,6 +375,10 @@ func scanInterfaceStats(netStatsFile string) ([]wrapper.NetworkInterface, error)
 		}
 
 		devName := fields[0]
+
+		if isIgnoredDevice(devName) {
+			continue
+		}
 
 		i := wrapper.NetworkInterface{
 			Name: devName,
@@ -336,4 +411,5 @@ func setInterfaceStatValues(fields []string, pointers []*uint64) error {
 	}
 	return nil
 }
+
 

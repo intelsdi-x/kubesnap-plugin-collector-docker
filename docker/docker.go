@@ -36,6 +36,7 @@ import (
 	dock "github.com/fsouza/go-dockerclient"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
 	//"github.com/docker/docker/vendor/src/github.com/opencontainers/runc/libcontainer/cgroups"
+
 )
 
 const (
@@ -44,7 +45,7 @@ const (
 	// namespace plugin name
 	NS_PLUGIN = "docker"
 	// version of plugin
-	VERSION = 5
+	VERSION = 6
 )
 
 
@@ -52,11 +53,11 @@ const (
 type containerData struct {
 	Id         string  		`json:"-"`
 	Status     string  		`json:"status"`
-	Created    int64   		`json:"creation_time"`
+	Created    time.Time   		`json:"creation_time"`
 	Image      string  		`json:"image_name"`
 	SizeRw     int64   		`json:"size_rw"`
 	SizeRootFs int64   		`json:"size_root_fs"`    // basic info about the container (status, uptime, etc.)
-	Stats      *wrapper.Statistics 	`json:"stats"`		// container statistics (cpu usage, memory usage, network stats, etc.)
+	Stats      *wrapper.Statistics 	`json:"-"`		// container statistics (cpu usage, memory usage, network stats, etc.)
 }
 
 // docker collector plugin type
@@ -185,11 +186,12 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 			if err != nil {
 				return nil, err
 			}
+
 			// set new item to docker.container structure
 			d.containers[rid] = containerData{
 				Id:         contSpec.ID,
 				Status:     contSpec.Status,
-				Created:    contSpec.Created,
+				Created:    time.Unix(contSpec.Created, 0),
 				Image:      contSpec.Image,
 				SizeRw:     contSpec.SizeRw,
 				SizeRootFs: contSpec.SizeRootFs,
@@ -198,31 +200,6 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 
 
 		}
-		/*
-		//stare
-		if contSpec, exist := d.list[rid]; exist {
-			// set new item to docker.container structure
-			d.containers[rid] = containerData{
-				Id:         contSpec.ID,
-				Status:     contSpec.Status,
-				Created:    contSpec.Created,
-				Image:      contSpec.Image,
-				SizeRw:     contSpec.SizeRw,
-				SizeRootFs: contSpec.SizeRootFs,
-				Stats:      wrapper.NewStatistics(),
-			}
-
-		} else {
-			return nil, fmt.Errorf("Docker container does not exist, container_id=", rid)
-		}
-
-
-		stats, err := d.client.GetStatsFromContainer(rid)
-		if err != nil {
-			return nil, err
-		}
-		*d.containers[rid].Stats = *stats
-		*/
 	}
 
 
@@ -301,16 +278,46 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 	return metrics, nil
 }
 
-func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error) {
-	//var namespaces []string
-	var metricTypes []plugin.MetricType
+// arbitraryContainerSpecification returns a docker specification info about an arbitrary container
+func arbitraryContainerSpecification(containers map[string]dock.APIContainers) (dock.APIContainers){
+	for _, contSpec := range containers {
+		return contSpec
+	}
+	return  dock.APIContainers{}
+}
 
+func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error) {
+	var namespaces []string
+	var metricTypes []plugin.MetricType
+	stats := wrapper.NewStatistics()
+	var err error
 	//d.init()
 
 	// try to list all running containers to check docker client conn
-	if _, err := d.client.ListContainersAsMap(); err != nil {
+	d.list, err = d.client.ListContainersAsMap();
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "The list of running containers cannot be retrived, err=%+v", err)
 		return nil, err
+	}
+
+	contSpec := arbitraryContainerSpecification(d.list)
+	arbitraryContID := contSpec.ID
+
+	// get stats from an arbitrary container to initialize stats structure
+	stats, err = d.client.GetStatsFromContainer(arbitraryContID)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Cannot initilize stats structure from an arbitrary choosen container, err=%+v", err)
+		return nil, err
+	}
+	// set new item to docker.container structure
+	data := containerData{
+		Stats:      stats,
+	}
+
+	ns.FromCompositionTags(data, "", &namespaces)
+
+	for i, ns := range namespaces {
+		fmt.Fprintln(os.Stderr, " Debug, Iza: namespaces[",i,"]=", ns)
 	}
 
 	// Generate available namespace for data container structure
@@ -322,11 +329,10 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	networkMetrics := []string{}
 
 
-	data := containerData{Stats: wrapper.NewStatistics()}
 	// take names of available metrics based on tags for containerData type; do not add prefix (empty string)
-	ns.FromCompositionTags(containerData{}, "spec", &specificationMetrics)
+	ns.FromCompositionTags(data, "spec", &specificationMetrics)
 	ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
-	ns.FromCompositionTags(wrapper.NetworkInterface{}, "", &networkMetrics)
+	ns.FromCompositionTags(data.Stats.Network, "", &networkMetrics)
 
 	fmt.Fprintln(os.Stderr, "Debug, len(namespaces1)=", len(specificationMetrics))
 	for index, ns := range specificationMetrics {
@@ -365,7 +371,7 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 			AddDynamicElement("docker_id", "an id of docker container").
 			AddStaticElement("network").
 			AddDynamicElement("network_interface", "a name of network interface").
-			AddStaticElements(strings.Split(metricName, "/")...)
+			AddStaticElements(strings.Split(metricName, "/")[1:]...)
 
 		metricType := plugin.MetricType{
 			Namespace_: ns,
