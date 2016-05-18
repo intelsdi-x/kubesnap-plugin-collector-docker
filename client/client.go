@@ -173,21 +173,42 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 // Notes: incoming container id has to be full-length to be able to inspect container
 func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, error) {
 	var (
-		stats     = wrapper.NewStatistics()
-		groupWrap = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
-		err       error
+		stats      = wrapper.NewStatistics()
+		groupWrap  = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
+		err        error
+		workingSet uint64
 	)
 
 	for cg, stat := range groupWrap {
-
 		groupPath, err := GetSubsystemPath(cg, id)
 
 		// get cgroup stats for given docker
 		err = stat.GetStats(groupPath, stats.CgroupStats)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Cannot obtain cgroups statistics")
+			fmt.Fprintln(os.Stderr, "Cannot obtain cgroups statistics, err=", err)
 			return nil, err
 		}
+
+		// calculate additional stats memory:working_set based on memory_stats
+		if totalInactiveAnon, ok := stats.CgroupStats.MemoryStats.Stats["total_inactive_anon"]; ok {
+			workingSet = stats.CgroupStats.MemoryStats.Usage.Usage
+			if workingSet < totalInactiveAnon {
+				workingSet = 0
+			} else {
+				workingSet -= totalInactiveAnon
+			}
+
+			if totalInactiveFile, ok := stats.CgroupStats.MemoryStats.Stats["total_inactive_file"]; ok {
+				if workingSet < totalInactiveFile {
+					workingSet = 0
+				} else {
+					workingSet -= totalInactiveFile
+				}
+			}
+		}
+
+		stats.CgroupStats.MemoryStats.Stats["working_set"] = workingSet
+
 	}
 
 	if !isFullLengthID(id) {

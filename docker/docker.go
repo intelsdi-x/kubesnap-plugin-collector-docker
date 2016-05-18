@@ -221,6 +221,7 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 				metrics = append(metrics, metric)
 
 			case "cgroups": // get docker cgroups stats
+
 				metric := plugin.MetricType{
 					Timestamp_: time.Now(),
 					Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
@@ -276,7 +277,6 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 }
 
 func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error) {
-	var namespaces []string
 	var metricTypes []plugin.MetricType
 	stats := wrapper.NewStatistics()
 	var err error
@@ -294,7 +294,7 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	// get stats from an arbitrary container to initialize stats structure
 	stats, err = d.client.GetStatsFromContainer(arbitraryContID)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Cannot initilize stats structure from an arbitrary choosen container, err=%+v", err)
+		fmt.Fprintln(os.Stderr, "Cannot initilize stats structure from an arbitrary choosen container, err=", err)
 		return nil, err
 	}
 
@@ -302,8 +302,6 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	data := containerData{
 		Stats: stats,
 	}
-
-	ns.FromCompositionTags(data, "", &namespaces)
 
 	// Generate available namespace for data container structure
 
@@ -319,7 +317,6 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	ns.FromCompositionTags(data.Stats.Connection, "connection", &connectionMetrics)
 
 	for _, metricName := range specificationMetrics {
-
 		ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
 			AddDynamicElement("docker_id", "an id of docker container").
 			AddStaticElements(strings.Split(metricName, "/")...)
@@ -332,7 +329,6 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	}
 
 	for _, metricName := range cgroupsMetrics {
-
 		ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
 			AddDynamicElement("docker_id", "an id of docker container").
 			AddStaticElements(strings.Split(metricName, "/")...)
@@ -345,7 +341,6 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	}
 
 	for _, metricName := range networkMetrics {
-
 		ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
 			AddDynamicElement("docker_id", "an id of docker container").
 			AddStaticElement("network").

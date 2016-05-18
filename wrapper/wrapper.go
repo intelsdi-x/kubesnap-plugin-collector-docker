@@ -69,7 +69,14 @@ type NetworkInterface struct {
 }
 
 func NewStatistics() *Statistics {
-	return &Statistics{Network: map[string]NetworkInterface{}, CgroupStats: cgroups.NewStats(), Connection: TcpInterface{}}
+	return &Statistics{
+		Network:     map[string]NetworkInterface{},
+		CgroupStats: cgroups.NewStats(),
+		Connection: TcpInterface{
+			Tcp:  TcpStat{},
+			Tcp6: TcpStat{},
+		},
+	}
 }
 
 type TcpInterface struct {
@@ -79,25 +86,25 @@ type TcpInterface struct {
 
 type TcpStat struct {
 	//Count of TCP connections in state "Established"
-	Established uint64
+	Established uint64 `json:"established"`
 	//Count of TCP connections in state "Syn_Sent"
-	SynSent uint64
+	SynSent uint64 `json:"syn_sent"`
 	//Count of TCP connections in state "Syn_Recv"
-	SynRecv uint64
+	SynRecv uint64 `json:"syn_recv"`
 	//Count of TCP connections in state "Fin_Wait1"
-	FinWait1 uint64
+	FinWait1 uint64 `json:"fin_wait1"`
 	//Count of TCP connections in state "Fin_Wait2"
-	FinWait2 uint64
+	FinWait2 uint64 `json:"fin_wait2"`
 	//Count of TCP connections in state "Time_Wait
-	TimeWait uint64
+	TimeWait uint64 `json:"time_wait"`
 	//Count of TCP connections in state "Close"
-	Close uint64
+	Close uint64 `json:"close"`
 	//Count of TCP connections in state "Close_Wait"
-	CloseWait uint64
+	CloseWait uint64 `json:"close_wait"`
 	//Count of TCP connections in state "Listen_Ack"
-	LastAck uint64
+	LastAck uint64 `json:"last_ack"`
 	//Count of TCP connections in state "Listen"
-	Listen uint64
+	Listen uint64 `json:"listen"`
 	//Count of TCP connections in state "Closing"
-	Closing uint64
+	Closing uint64 `json:"closing"`
 }
