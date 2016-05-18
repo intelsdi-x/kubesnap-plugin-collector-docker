@@ -23,15 +23,14 @@ package client
 
 import (
 	"errors"
-	"time"
+	//"time"
+	"bufio"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"strconv"
-	"bufio"
+	"strings"
 	//"syscall"
 	//"io/ioutil"
-
 
 	"github.com/fsouza/go-dockerclient"
 	"github.com/opencontainers/runc/libcontainer/cgroups"
@@ -45,7 +44,6 @@ const endpoint string = "unix:///var/run/docker.sock"
 type storageDriver string
 
 const (
-
 	devicemapperStorageDriver storageDriver = "devicemapper"
 	aufsStorageDriver         storageDriver = "aufs"
 	overlayStorageDriver      storageDriver = "overlay"
@@ -59,40 +57,32 @@ const (
 	pathToContainersDir = "containers"
 )
 
-
 type DockerClientInterface interface {
 	ListContainersAsMap() (map[string]docker.APIContainers, error)
-	GetContainerStats(string, time.Duration) (*docker.Stats, error)
+	//GetContainerStats(string, time.Duration) (*docker.Stats, error)
 	GetStatsFromContainer(string) (*wrapper.Statistics, error)
 	InspectContainer(string) (*docker.Container, error)
-	//FindCgroupMountpoint(string) (string, error)
+	FindCgroupMountpoint(string) (string, error)
 }
 
-
-type dockerClient struct{
+type dockerClient struct {
 	cl *docker.Client
 }
 
-func NewDockerClient() (*dockerClient) {
+func NewDockerClient() *dockerClient {
 	client, err := docker.NewClient(endpoint)
 	if err != nil {
 		panic(err)
 	}
 	return &dockerClient{cl: client}
 }
-/*
+
 func (dc *dockerClient) FindCgroupMountpoint(subsystem string) (string, error) {
 	return cgroups.FindCgroupMountpoint(subsystem)
 }
-*/
 
-// getShortId returns short version of container ID (12 char)
-func GetShortId(dockerID string) (string, error) {
-	// get short version of container ID
-	if len(dockerID) < 12 {
-		return "", fmt.Errorf("Docker id %+s is too short (the length of id should equal at least 12)", dockerID)
-	}
-	return dockerID[:12], nil
+func (dc *dockerClient) InspectContainer(id string) (*docker.Container, error) {
+	return dc.cl.InspectContainer(id)
 }
 
 func (dc *dockerClient) ListContainersAsMap() (map[string]docker.APIContainers, error) {
@@ -104,9 +94,8 @@ func (dc *dockerClient) ListContainersAsMap() (map[string]docker.APIContainers, 
 		return nil, err
 	}
 
-	fmt.Fprintln(os.Stderr, "The number of available containers: ", len(containerList))
+	fmt.Fprintln(os.Stderr, "Debug: The number of available containers: ", len(containerList))
 	for _, cont := range containerList {
-		fmt.Fprintln(os.Stderr, "Ej co jest")
 		shortID, _ := GetShortId(cont.ID)
 		containers[shortID] = cont
 	}
@@ -115,10 +104,10 @@ func (dc *dockerClient) ListContainersAsMap() (map[string]docker.APIContainers, 
 		return nil, errors.New("No docker container found")
 	}
 
-
 	return containers, nil
 }
 
+/*
 func (dc *dockerClient) GetContainerStats(id string, timeout time.Duration) (*docker.Stats, error) {
 
 	var resultStats *docker.Stats
@@ -145,17 +134,9 @@ func (dc *dockerClient) GetContainerStats(id string, timeout time.Duration) (*do
 
 	return resultStats, nil
 }
+*/
 
-
-func (dc *dockerClient) FindCgroupMountpoint(subsystem string) (string, error) {
-
-	return cgroups.FindCgroupMountpoint(subsystem)
-}
-
-// IsRunningSystemd checks whether the host was booted with systemd as its init
-// system. This functions similarly to systemd's `sd_booted(3)`: internally, it
-// checks whether /run/systemd/system/ exists and is a directory.
-// http://www.freedesktop.org/software/systemd/man/sd_booted.html
+// isRunningSystemd returns true if the host was booted with systemd
 func isRunningSystemd() bool {
 return true
 //	fi, err := os.Lstat("/run/systemd/system")
@@ -164,7 +145,6 @@ return true
 //	}
 //	return fi.IsDir()
 }
-
 
 func GetSubsystemPath(subsystem string, id string) (string, error) {
 	var groupPath string
@@ -175,7 +155,7 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 	}
 
 	if isRunningSystemd() {
-		fmt.Fprintln(os.Stderr, "Tak uzywa systemd!!!")
+		fmt.Fprintln(os.Stderr, "Debug: create path to cgroup for given docker id base on systemd")
 		slice := "system.slice"
 		// create path to cgroup for given docker id
 		groupPath = filepath.Join(mountpoint, slice, "docker-"+id+".scope")
@@ -186,193 +166,67 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 	return groupPath, nil
 }
 
-// long id has to be given
+// GetStatsFromContainer returns docker containers stats: cgroups stats (cpu usage, memory usage, etc.) and network stats (tx_bytes, rx_bytes etc.)
+// Notes: incoming container id has to be full-length to be able to inspect container
 func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, error) {
-
 	var (
-		stats = wrapper.NewStatistics()
-		cgstats = cgroups.NewStats()
-		err   error
-		//stats = wrapper.Stats{}
-		groupWrap = wrapper.Cgroups2Stats     // wrapper for cgroup name and interface for stats extraction
+		stats     = wrapper.NewStatistics()
+		groupWrap = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
+		err       error
 	)
 
 	for cg, stat := range groupWrap {
 
 		groupPath, err := GetSubsystemPath(cg, id)
-		fmt.Fprintln(os.Stderr, "Debug, iza groupdath=", groupPath, "err=", err )
-		//mp, err := d.client.FindCgroupMountpoint(cg)
 
-		//if err != nil {
-		//	fmt.Printf("[WARNING] Could not find mount point for %s\n", cg)
-		//	continue
-		//}
-
-		// create path to cgroup for given docker id
-		//groupPath := filepath.Join(mp, "docker", id)
 		// get cgroup stats for given docker
 		err = stat.GetStats(groupPath, stats.CgroupStats)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Iza- Nie znalazl stats")
+			fmt.Fprintln(os.Stderr, "Cannot obtain cgroups statistics")
 			return nil, err
 		}
-
-		fmt.Fprintln(os.Stderr, "Iza- znalazl stats=", cgstats.CpuStats)
 	}
 
-
+	if !isFullLengthID(id) {
+		return stats, fmt.Errorf("Container id %+v is not fully-length - cannot inspect container", id)
+	}
+	// inspect container based only on fully-length container id.
 	container, err := dc.InspectContainer(id)
 
-	fmt.Fprintln(os.Stderr, "Debug inspect: container.Driver=%+v", container.Driver)
-
-	fmt.Fprintln(os.Stderr, "Debug inspect: container.HostConfig.Devices=%+v", container.HostConfig.Devices)
-	fmt.Fprintln(os.Stderr, "Debug inspect: container.Mount[]=%+v", container.Mounts)
-	fmt.Fprintln(os.Stderr, "Debug inspect: container.HostConfig.VolumesFrom[]=%+v", container.HostConfig.VolumesFrom)
-
-	fmt.Fprintln(os.Stderr, "Debug inspect: container.SysInitPath=%+v", container.SysInitPath)
-	fmt.Fprintln(os.Stderr, "Debug inspect: container.Path=%+v", container.Path)
 	if err != nil {
-		return nil, err
+		fmt.Fprintf(os.Stderr, "Unable to get inspect container to get pid, err=%v", err)
+		// only log error message and return stats (contains cgroups stats)
+		return stats, nil
 	}
 
 	rootFs := "/"
 
-	fmt.Fprintln(os.Stderr, "container.State.Pid=", container.State.Pid)
-
-	pid := container.State.Pid
-	stats.Network, err = networkStatsFromProc(rootFs, pid)
+	stats.Network, err = networkStatsFromProc(rootFs, container.State.Pid)
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to get network stats from pid %d: %v", pid, err)
+		// only log error message
+		fmt.Fprintf(os.Stderr, "Unable to get network stats, containerID=%+v, pid %d: %v", container.ID, container.State.Pid, err)
 	}
 
-
-	fmt.Fprintln(os.Stderr, "netStats len=", len(stats.Network))
-	for _, netStat := range stats.Network {
-		fmt.Fprintln(os.Stderr, "netStat name=" ,netStat.Name)
-		fmt.Fprintln(os.Stderr, "netStat RxBytes=" , netStat.RxBytes)
-		fmt.Fprintln(os.Stderr, "netStat TxBytes=" , netStat.TxBytes)
-	}
-
-
-	fmt.Fprintln(os.Stderr, "Iza- wylazl")
 	return stats, nil
 }
-/*
 
-func getRwLayerID(containerID, storageDir string, sd storageDriver, dockerVersion []int) (string, error) {
-	const (
-		// Docker version >=1.10.0 have a randomized ID for the root fs of a container.
-		randomizedRWLayerMinorVersion = 10
-		rwLayerIDFile                 = "mount-id"
-	)
-	if (dockerVersion[0] <= 1) && (dockerVersion[1] < randomizedRWLayerMinorVersion) {
-		return containerID, nil
+// getShortId returns short version of container ID (12 char)
+func GetShortId(dockerID string) (string, error) {
+	// get short version of container ID
+	if len(dockerID) < 12 {
+		return "", fmt.Errorf("Docker id %+s is too short (the length of id should equal at least 12)", dockerID)
 	}
-
-	bytes, err := ioutil.ReadFile(filepath.Join(storageDir, "image", string(sd), "layerdb", "mounts", containerID, rwLayerIDFile))
-	if err != nil {
-		return "", fmt.Errorf("failed to identify the read-write layer ID for container %q. - %v", containerID, err)
-	}
-	return string(bytes), err
+	return dockerID[:12], nil
 }
 
-func getFsStats(container *docker.Container) error {
-
-	storageDiver := container.Driver
-	storageDir := "/"
-
-	rwLayerID, err := getRwLayerID(container.ID, storageDir, storageDriver, []int{})
-	if err != nil {
-		return nil, err
+// isFullLengthID returns true if docker id is full-length (64 char)
+func isFullLengthID(dockerID string) bool {
+	if len(dockerID) == 64 {
+		return true
 	}
-
-	var rootfsStorageDir string
-
-	switch storageDriver {
-	case aufsStorageDriver:
-		rootfsStorageDir = filepath.Join(storageDir, string(aufsStorageDriver), aufsRWLayer, rwLayerID)
-	case overlayStorageDriver:
-		rootfsStorageDir = filepath.Join(storageDir, string(overlayStorageDriver), rwLayerID)
-	default:
-	return nil
-	}
-
-
-
-	deviceInfo, err := GetDirFsDevice(rootfsStorageDir)
-	if err != nil {
-		return err
-	}
-
-	mi, err := self.machineInfoFactory.GetMachineInfo()
-	if err != nil {
-		return err
-	}
-
-	var (
-		limit  uint64
-		fsType string
-	)
-
-	// Docker does not impose any filesystem limits for containers. So use capacity as limit.
-	for _, fs := range mi.Filesystems {
-		if fs.Device == deviceInfo.Device {
-			limit = fs.Capacity
-			fsType = fs.Type
-			break
-		}
-	}
-
-	fsStat := info.FsStats{Device: deviceInfo.Device, Type: fsType, Limit: limit}
-
-	fsStat.BaseUsage, fsStat.Usage = self.fsHandler.Usage()
-	stats.Filesystem = append(stats.Filesystem, fsStat)
-
-	return nil
+	return false
 }
-*/
-/*
-mounts, err := mount.GetMounts()
-	if err != nil {
-		return nil, err
-	}
-	fsInfo := &RealFsInfo{
-		partitions: make(map[string]partition, 0),
-		labels:     make(map[string]string, 0),
-		dmsetup:    &defaultDmsetupClient{},
-	}
-
-	fsInfo.addSystemRootLabel(mounts)
-	fsInfo.addDockerImagesLabel(context, mounts)
-	fsInfo.addRktImagesLabel(context, mounts)
-
-*/
-/*
-func GetDirFsDevice(dir string) (*DeviceInfo, error) {
-	buf := new(syscall.Stat_t)
-	err := syscall.Stat(dir, buf)
-	if err != nil {
-		return nil, fmt.Errorf("stat failed on %s with error: %s", dir, err)
-	}
-	major := major(buf.Dev)
-	minor := minor(buf.Dev)
-	for device, partition := range self.partitions {
-		if partition.major == major && partition.minor == minor {
-			return &DeviceInfo{device, major, minor}, nil
-		}
-	}
-	return nil, fmt.Errorf("could not find device with major: %d, minor: %d in cached partitions map", major, minor)
-}
-
-func major(devNumber uint64) uint {
-	return uint((devNumber >> 8) & 0xfff)
-}
-
-func minor(devNumber uint64) uint {
-	return uint((devNumber & 0xff) | ((devNumber >> 12) & 0xfff00))
-}
-*/
 
 func networkStatsFromProc(rootFs string, pid int) (map[string]wrapper.NetworkInterface, error) {
 
@@ -393,7 +247,6 @@ func networkStatsFromProc(rootFs string, pid int) (map[string]wrapper.NetworkInt
 		return nil, errors.New("No network interface found")
 	}
 
-
 	return netStats, nil
 }
 
@@ -405,12 +258,6 @@ func isIgnoredDevice(ifName string) bool {
 		}
 	}
 	return false
-}
-
-
-func (dc *dockerClient) InspectContainer(id string) (*docker.Container, error) {
-	fmt.Fprintln(os.Stderr, "Debug, wlazl hurra")
-	return dc.cl. InspectContainer(id)
 }
 
 func scanInterfaceStats(netStatsFile string) ([]wrapper.NetworkInterface, error) {
@@ -478,5 +325,3 @@ func setInterfaceStatValues(fields []string, pointers []*uint64) error {
 	}
 	return nil
 }
-
-
