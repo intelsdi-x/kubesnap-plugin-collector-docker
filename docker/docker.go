@@ -22,21 +22,19 @@ limitations under the License.
 package docker
 
 import (
-	"fmt"
-	"strings"
-	"github.com/intelsdi-x/snap/core"
-	"os"
-	"time"
 	"errors"
+	"fmt"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/client"
 	"github.com/intelsdi-x/snap-plugin-utilities/ns"
 	"github.com/intelsdi-x/snap/control/plugin"
 	"github.com/intelsdi-x/snap/control/plugin/cpolicy"
+	"github.com/intelsdi-x/snap/core"
+	"os"
+	"strings"
+	"time"
 
 	dock "github.com/fsouza/go-dockerclient"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
-	//"github.com/docker/docker/vendor/src/github.com/opencontainers/runc/libcontainer/cgroups"
-
 )
 
 const (
@@ -45,40 +43,36 @@ const (
 	// namespace plugin name
 	NS_PLUGIN = "docker"
 	// version of plugin
-	VERSION = 6
+	VERSION = 7
 )
 
-
-
 type containerData struct {
-	Id         string  		`json:"-"`
-	Status     string  		`json:"status"`
-	Created    string   		`json:"creation_time"`
-	Image      string  		`json:"image_name"`
-	SizeRw     int64   		`json:"size_rw"`
-	SizeRootFs int64   		`json:"size_root_fs"`    // basic info about the container (status, uptime, etc.)
-	Stats      *wrapper.Statistics 	`json:"-"`		// container statistics (cpu usage, memory usage, network stats, etc.)
+	Id         string              `json:"-"` // basic info about the container (status, uptime, etc.)
+	Status     string              `json:"status"`
+	Created    string              `json:"creation_time"`
+	Image      string              `json:"image_name"`
+	SizeRw     int64               `json:"size_rw"`
+	SizeRootFs int64               `json:"size_root_fs"`
+	Stats      *wrapper.Statistics `json:"-"` // container statistics (cpu usage, memory usage, network stats, etc.)
 }
 
 // docker collector plugin type
 type docker struct {
-	containers  	map[string]containerData 	// holds data for a container under its short id
-	initialized 	bool
-	client      	client.DockerClientInterface 	// client for communication with docker (basic info, stats, mount points)
-	list		map[string]dock.APIContainers	// contain list of all available docker containers with info about their specification
-
+	containers  map[string]containerData // holds data for a container under its short id
+	initialized bool
+	client      client.DockerClientInterface  // client for communication with docker (basic info, stats, mount points)
+	list        map[string]dock.APIContainers // contain list of all available docker containers with info about their specification
 
 }
 
 // Docker plugin initializer
 func New() *docker {
 	return &docker{
-		containers:  map[string]containerData{},
-		client: client.NewDockerClient(),
-		list: map[string]dock.APIContainers{},
+		containers: map[string]containerData{},
+		client:     client.NewDockerClient(),
+		list:       map[string]dock.APIContainers{},
 	}
 }
-
 
 // availableContainer returns IDs of all available docker containers
 func (d *docker) availableContainers() []string {
@@ -93,7 +87,7 @@ func (d *docker) availableContainers() []string {
 }
 
 // validateDockerID returns true if docker with a given dockerID has been found on list of available dockers
-func (d *docker) validateDockerID(dockerID string) (bool) {
+func (d *docker) validateDockerID(dockerID string) bool {
 
 	if _, exist := d.list[dockerID]; exist {
 		return true
@@ -103,11 +97,11 @@ func (d *docker) validateDockerID(dockerID string) (bool) {
 }
 
 // validateMetricNamespace returns true if the given metric namespace has the required length
-func validateMetricNamespace(ns []string) (bool) {
+func validateMetricNamespace(ns []string) bool {
 
-	if len(ns) < 4 {
-		// metric namespace has to contain the following 4 elements:
-		// "intel", "docker", "<docker_id>", "<metric_name>"
+	if len(ns) < 5 {
+		// metric namespace has to contain the following 5 elements:
+		// "intel", "docker", "<docker_id>", "<metric_type: spec,cgroups or network>", "<metric_name>"
 		return false
 	}
 	return true
@@ -191,17 +185,15 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 			d.containers[rid] = containerData{
 				Id:         contSpec.ID,
 				Status:     contSpec.Status,
-				Created:    time.Unix(contSpec.Created,0).Format("2006-01-02T15:04:05Z07:00"),
+				Created:    time.Unix(contSpec.Created, 0).Format("2006-01-02T15:04:05Z07:00"),
 				Image:      contSpec.Image,
 				SizeRw:     contSpec.SizeRw,
 				SizeRootFs: contSpec.SizeRootFs,
 				Stats:      stats,
 			}
 
-
 		}
 	}
-
 
 	for _, mt := range mts {
 
@@ -226,46 +218,41 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 					Config_:    mt.Config(),
 				}
 
-					metrics = append(metrics, metric)
+				metrics = append(metrics, metric)
 
 			case "cgroups": // get docker cgroups stats
+				metric := plugin.MetricType{
+					Timestamp_: time.Now(),
+					Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
+					Data_:      ns.GetValueByNamespace(d.containers[id].Stats.CgroupStats, metricName),
+					Tags_:      mt.Tags(),
+					Config_:    mt.Config(),
+				}
+				metrics = append(metrics, metric)
+			case "network": //get docker network information
+				// support wildcard on interface name
+				netInterfaces := []string{}
+				if metricName[0] == "*" {
+					for netInterface := range d.containers[id].Stats.Network {
+						netInterfaces = append(netInterfaces, netInterface)
+					}
+				} else {
+					netInterfaces = append(netInterfaces, metricName[0])
+				}
+
+				for _, net := range netInterfaces {
 					metric := plugin.MetricType{
 						Timestamp_: time.Now(),
-						Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
-						Data_:       ns.GetValueByNamespace(d.containers[id].Stats.CgroupStats, metricName),
-						Tags_: 	 mt.Tags(),
-						Config_: mt.Config(),
+						Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(statsType, net, metricName[1]),
+						Data_:      ns.GetValueByNamespace(d.containers[id].Stats.Network[net], metricName[1:]),
+						Tags_:      mt.Tags(),
+						Config_:    mt.Config(),
 					}
+
 					metrics = append(metrics, metric)
-			case "network": //get docker network information
-					// support wildcard on interface name
-					netInterfaces := []string{}
-					if metricName[0] == "*" {
-						for netInterface := range d.containers[id].Stats.Network {
-							netInterfaces = append(netInterfaces, netInterface)
-						}
-					} else {
-						netInterfaces = append(netInterfaces, metricName[0])
-					}
-
-					for _, net := range netInterfaces {
-						metric := plugin.MetricType{
-							Timestamp_: time.Now(),
-							Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(statsType, net, metricName[1]),
-							Data_:      ns.GetValueByNamespace(d.containers[id].Stats.Network[net], metricName[1:]),
-							Tags_: 	 mt.Tags(),
-							Config_: mt.Config(),
-						}
-						metrics = append(metrics, metric)
-
-					}
-
-
-			default:
-
+				}
 
 			}
-
 
 		}
 
@@ -278,23 +265,14 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 	return metrics, nil
 }
 
-// arbitraryContainerSpecification returns a docker specification info about an arbitrary container
-func arbitraryContainerSpecification(containers map[string]dock.APIContainers) (dock.APIContainers){
-	for _, contSpec := range containers {
-		return contSpec
-	}
-	return  dock.APIContainers{}
-}
-
 func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error) {
 	var namespaces []string
 	var metricTypes []plugin.MetricType
 	stats := wrapper.NewStatistics()
 	var err error
-	//d.init()
 
 	// try to list all running containers to check docker client conn
-	d.list, err = d.client.ListContainersAsMap();
+	d.list, err = d.client.ListContainersAsMap()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "The list of running containers cannot be retrived, err=%+v", err)
 		return nil, err
@@ -309,35 +287,24 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 		fmt.Fprintln(os.Stderr, "Cannot initilize stats structure from an arbitrary choosen container, err=%+v", err)
 		return nil, err
 	}
+
 	// set new item to docker.container structure
 	data := containerData{
-		Stats:      stats,
+		Stats: stats,
 	}
 
 	ns.FromCompositionTags(data, "", &namespaces)
 
-	for i, ns := range namespaces {
-		fmt.Fprintln(os.Stderr, " Debug, Iza: namespaces[",i,"]=", ns)
-	}
-
 	// Generate available namespace for data container structure
-
-	//prefix := strings.Join([]string{NS_VENDOR, NS_VENDOR, "*"}, "/")
 
 	specificationMetrics := []string{}
 	cgroupsMetrics := []string{}
 	networkMetrics := []string{}
 
-
 	// take names of available metrics based on tags for containerData type; do not add prefix (empty string)
 	ns.FromCompositionTags(data, "spec", &specificationMetrics)
 	ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
 	ns.FromCompositionTags(data.Stats.Network, "", &networkMetrics)
-
-	fmt.Fprintln(os.Stderr, "Debug, len(namespaces1)=", len(specificationMetrics))
-	for index, ns := range specificationMetrics {
-		fmt.Fprintln(os.Stderr, "Debug, ns[", index, "]=",ns)
-	}
 
 	for _, metricName := range specificationMetrics {
 
@@ -380,20 +347,18 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 		metricTypes = append(metricTypes, metricType)
 	}
 
-
-
-	container, err := d.client.InspectContainer("2cfc558de806")
-	fmt.Fprintln(os.Stderr, "Debug, Iza- container=", container)
-	fmt.Fprintln(os.Stderr, "Debug, Iza- container, err=",err)
-	//d.client.InspectContainer("c6fb376e32f1")
-
-
-	//inna próba
-	d.client.GetStatsFromContainer("2cfc558de8061264d5d50dcca60f591cb8d63afa037fec463cf396482aef5075")
 	return metricTypes, nil
 
 }
 
 func (d *docker) GetConfigPolicy() (*cpolicy.ConfigPolicy, error) {
 	return cpolicy.New(), nil
+}
+
+// arbitraryContainerSpecification returns a docker specification info about an arbitrary container
+func arbitraryContainerSpecification(containers map[string]dock.APIContainers) dock.APIContainers {
+	for _, contSpec := range containers {
+		return contSpec
+	}
+	return dock.APIContainers{}
 }
