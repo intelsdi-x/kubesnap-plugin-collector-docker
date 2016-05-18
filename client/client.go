@@ -138,11 +138,16 @@ func (dc *dockerClient) GetContainerStats(id string, timeout time.Duration) (*do
 
 // isRunningSystemd returns true if the host was booted with systemd
 func isRunningSystemd() bool {
-	fi, err := os.Lstat("/run/systemd/system")
-	if err != nil {
-		return false
-	}
-	return fi.IsDir()
+	// todo
+	/*
+		fi, err := os.Lstat("/run/systemd/system")
+		if err != nil {
+			return false
+		}
+		return fi.IsDir()
+	*/
+	// for POC
+	return true
 }
 
 func GetSubsystemPath(subsystem string, id string) (string, error) {
