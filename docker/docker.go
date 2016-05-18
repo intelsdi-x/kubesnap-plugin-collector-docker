@@ -43,7 +43,7 @@ const (
 	// namespace plugin name
 	NS_PLUGIN = "docker"
 	// version of plugin
-	VERSION = 7
+	VERSION = 8
 )
 
 type containerData struct {
@@ -229,6 +229,16 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 					Config_:    mt.Config(),
 				}
 				metrics = append(metrics, metric)
+
+			case "connection": // get docker connection stats (tcp and tcp6)
+				metric := plugin.MetricType{
+					Timestamp_: time.Now(),
+					Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
+					Data_:      ns.GetValueByNamespace(d.containers[id].Stats.Connection, metricName),
+					Tags_:      mt.Tags(),
+					Config_:    mt.Config(),
+				}
+				metrics = append(metrics, metric)
 			case "network": //get docker network information
 				// support wildcard on interface name
 				netInterfaces := []string{}
@@ -300,11 +310,13 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	specificationMetrics := []string{}
 	cgroupsMetrics := []string{}
 	networkMetrics := []string{}
+	connectionMetrics := []string{}
 
 	// take names of available metrics based on tags for containerData type; do not add prefix (empty string)
 	ns.FromCompositionTags(data, "spec", &specificationMetrics)
 	ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
 	ns.FromCompositionTags(data.Stats.Network, "", &networkMetrics)
+	ns.FromCompositionTags(data.Stats.Connection, "connection", &connectionMetrics)
 
 	for _, metricName := range specificationMetrics {
 
@@ -339,6 +351,19 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 			AddStaticElement("network").
 			AddDynamicElement("network_interface", "a name of network interface").
 			AddStaticElements(strings.Split(metricName, "/")[1:]...)
+
+		metricType := plugin.MetricType{
+			Namespace_: ns,
+		}
+
+		metricTypes = append(metricTypes, metricType)
+	}
+
+	for _, metricName := range connectionMetrics {
+
+		ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
+			AddDynamicElement("docker_id", "an id of docker container").
+			AddStaticElements(strings.Split(metricName, "/")...)
 
 		metricType := plugin.MetricType{
 			Namespace_: ns,
