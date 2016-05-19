@@ -120,10 +120,13 @@ func (d *docker) getRequestedIDs(mt ...plugin.MetricType) ([]string, error) {
 		if rid == "*" {
 			// all available dockers are requested
 			idsOfAllContainers := d.availableContainers()
-			if len(idsOfAllContainers) == 0 {
-				return nil, errors.New("No docker container found")
-			}
-			return idsOfAllContainers, nil
+			//if len(idsOfAllContainers) == 0 {
+			//	return nil, errors.New("No docker container found")
+			//}
+			return append(idsOfAllContainers, "root"), nil
+		} else if rid == "root" {
+			rids = appendIfMissing(rids, "root")
+			continue
 		}
 		shortid, errId := client.GetShortId(rid)
 		if errId != nil {
