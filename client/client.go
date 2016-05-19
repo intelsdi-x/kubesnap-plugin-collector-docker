@@ -158,8 +158,9 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 		fmt.Printf("[WARNING] Could not find mount point for %s\n", subsystem)
 		return "", err
 	}
-
-	if isRunningSystemd() {
+	if id == "/" {
+		groupPath = mountpoint
+	} else if isRunningSystemd() {
 		fmt.Fprintln(os.Stderr, "Debug: create path to cgroup for given docker id base on systemd")
 		slice := "system.slice"
 		// create path to cgroup for given docker id
