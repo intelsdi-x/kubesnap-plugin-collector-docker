@@ -52,6 +52,7 @@ type Statistics struct {
 	Network     map[string]NetworkInterface `json:"network"`
 	Connection  TcpInterface                `json:"connection"` //TCP, TCP6 connection stats
 	CgroupStats *cgroups.Stats              `json:"cgroups"`
+	Labels map[string]string `json:"labels"`
 }
 
 type NetworkInterface struct {
@@ -76,6 +77,7 @@ func NewStatistics() *Statistics {
 			Tcp:  TcpStat{},
 			Tcp6: TcpStat{},
 		},
+		Labels: map[string]string {},
 	}
 }
 
