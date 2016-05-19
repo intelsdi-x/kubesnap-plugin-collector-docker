@@ -99,6 +99,7 @@ func (dc *dockerClient) ListContainersAsMap() (map[string]docker.APIContainers, 
 		shortID, _ := GetShortId(cont.ID)
 		containers[shortID] = cont
 	}
+	containers["root"] = docker.APIContainers{ID: "/"}
 
 	if len(containers) == 0 {
 		return nil, errors.New("No docker container found")
@@ -174,14 +175,20 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 // Notes: incoming container id has to be full-length to be able to inspect container
 func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, error) {
 	var (
-		stats      = wrapper.NewStatistics()
-		groupWrap  = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
-		err        error
+		stats = wrapper.NewStatistics()
+		groupWrap = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
+		//err error
 		workingSet uint64
 	)
 
 	for cg, stat := range groupWrap {
-		groupPath, err := GetSubsystemPath(cg, id)
+		var err error
+		var groupPath string
+		if id != "root" {
+			groupPath, err = GetSubsystemPath(cg, id)
+		} else {
+			groupPath, err = GetSubsystemPath(cg, "/")
+		}
 
 		// get cgroup stats for given docker
 		err = stat.GetStats(groupPath, stats.CgroupStats)
@@ -212,48 +219,50 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 
 	}
 
-	if !isFullLengthID(id) {
-		return stats, fmt.Errorf("Container id %+v is not fully-length - cannot inspect container", id)
-	}
-	// inspect container based only on fully-length container id.
-	container, err := dc.InspectContainer(id)
+	if id != "/" {
+		if !isFullLengthID(id) {
+			return stats, fmt.Errorf("Container id %+v is not fully-length - cannot inspect container", id)
+		}
+		// inspect container based only on fully-length container id.
+		container, err := dc.InspectContainer(id)
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to get inspect container to get pid, err=%v", err)
-		// only log error message and return stats (contains cgroups stats)
-		return stats, nil
-	}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to get inspect container to get pid, err=%v", err)
+			// only log error message and return stats (contains cgroups stats)
+			return stats, nil
+		}
 
-	rootFs := "/"
-	pid := container.State.Pid
+		rootFs := "/"
+		pid := container.State.Pid
 
-	stats.Network, err = networkStatsFromProc(rootFs, pid)
-	extractContainerLabels := func(container *docker.Container) map[string]string {
-		res := map[string]string {}
-		config := container.Config
-		if config == nil {
+		stats.Network, err = networkStatsFromProc(rootFs, pid)
+		extractContainerLabels := func(container *docker.Container) map[string]string {
+			res := map[string]string{}
+			config := container.Config
+			if config == nil {
+				return res
+			}
+			for k, v := range config.Labels {
+				res[ns.ReplaceNotAllowedCharsInNamespacePart(k)] = v
+			}
 			return res
 		}
-		for k, v := range config.Labels {
-			res[ns.ReplaceNotAllowedCharsInNamespacePart(k)] = v
+		stats.Labels = extractContainerLabels(container)
+
+		if err != nil {
+			// only log error message
+			fmt.Fprintf(os.Stderr, "Unable to get network stats, containerID=%+v, pid %d: %v", container.ID, pid, err)
 		}
-		return res
-	}
-	stats.Labels = extractContainerLabels(container)
 
-	if err != nil {
-		// only log error message
-		fmt.Fprintf(os.Stderr, "Unable to get network stats, containerID=%+v, pid %d: %v", container.ID, pid, err)
-	}
+		stats.Connection.Tcp, err = tcpStatsFromProc(rootFs, pid, "net/tcp")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to get tcp stats from pid %d: %v", pid, err)
+		}
 
-	stats.Connection.Tcp, err = tcpStatsFromProc(rootFs, pid, "net/tcp")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to get tcp stats from pid %d: %v", pid, err)
-	}
-
-	stats.Connection.Tcp6, err = tcpStatsFromProc(rootFs, pid, "net/tcp6")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to get tcp6 stats from pid %d: %v", pid, err)
+		stats.Connection.Tcp6, err = tcpStatsFromProc(rootFs, pid, "net/tcp6")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to get tcp6 stats from pid %d: %v", pid, err)
+		}
 	}
 
 	return stats, nil
