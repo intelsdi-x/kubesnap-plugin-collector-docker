@@ -37,6 +37,7 @@ import (
 	"os"
 
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
+	"github.com/intelsdi-x/snap-plugin-utilities/ns"
 )
 
 const endpoint string = "unix:///var/run/docker.sock"
@@ -227,6 +228,19 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 	rootFs := "/"
 
 	stats.Network, err = networkStatsFromProc(rootFs, container.State.Pid)
+
+	extractContainerLabels := func(container *docker.Container) map[string]string {
+		res := map[string]string {}
+		config := container.Config
+		if config == nil {
+			return res
+		}
+		for k, v := range config.Labels {
+			res[ns.ReplaceNotAllowedCharsInNamespacePart(k)] = v
+		}
+		return res
+	}
+	stats.Labels = extractContainerLabels(container)
 
 	if err != nil {
 		// only log error message

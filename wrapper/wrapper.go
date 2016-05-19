@@ -51,6 +51,7 @@ type Stats interface {
 type Statistics struct {
 	Network     map[string]NetworkInterface `json:"network"`
 	CgroupStats *cgroups.Stats              `json:"cgroups"`
+	Labels map[string]string `json:"labels"`
 }
 
 type NetworkInterface struct {
@@ -68,5 +69,5 @@ type NetworkInterface struct {
 }
 
 func NewStatistics() *Statistics {
-	return &Statistics{Network: map[string]NetworkInterface{}, CgroupStats: cgroups.NewStats()}
+	return &Statistics{Network: map[string]NetworkInterface{}, CgroupStats: cgroups.NewStats(), Labels: map[string]string {}}
 }

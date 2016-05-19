@@ -220,6 +220,28 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 
 				metrics = append(metrics, metric)
 
+			case "labels":
+				labelKeys := []string {}
+				if metricName[0] =="*" {
+					for k, _ := range d.containers[id].Stats.Labels {
+						labelKeys = append(labelKeys, k)
+					}
+				} else {
+					labelKeys = append(labelKeys, metricName[0])
+				}
+				for _, labelName := range labelKeys {
+					metric := plugin.MetricType{
+						Timestamp_: time.Now(),
+						Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements("labels", labelName, "value"),
+						Data_:      d.containers[id].Stats.Labels[labelName],
+						Tags_:      mt.Tags(),
+						Config_:    mt.Config(),
+					}
+
+					metrics = append(metrics, metric)
+				}
+
+
 			case "cgroups": // get docker cgroups stats
 				metric := plugin.MetricType{
 					Timestamp_: time.Now(),
@@ -331,6 +353,13 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 
 		metricTypes = append(metricTypes, metricType)
 	}
+
+	ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
+		AddDynamicElement("docker_id", "an id of docker container").
+		AddStaticElement("labels").
+		AddDynamicElement("label", "name of a container label").
+		AddStaticElement("value")
+	metricTypes = append(metricTypes, plugin.MetricType{Namespace_: ns})
 
 	for _, metricName := range networkMetrics {
 
