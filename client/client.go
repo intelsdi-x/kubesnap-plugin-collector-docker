@@ -66,6 +66,8 @@ type DockerClientInterface interface {
 	FindCgroupMountpoint(string) (string, error)
 }
 
+var networkMetrics []string = []string {}
+
 type dockerClient struct {
 	cl *docker.Client
 }
@@ -75,6 +77,8 @@ func NewDockerClient() *dockerClient {
 	if err != nil {
 		panic(err)
 	}
+	sample := wrapper.NetworkInterface{}
+	ns.FromCompositionTags(sample, "", &networkMetrics)
 	return &dockerClient{cl: client}
 }
 
@@ -178,9 +182,25 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 	var (
 		stats = wrapper.NewStatistics()
 		groupWrap = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
-		//err error
+		err error
 		workingSet uint64
 	)
+	var container *docker.Container
+	var pid int
+	if id != "/" {
+		if !isFullLengthID(id) {
+			return stats, fmt.Errorf("Container id %+v is not fully-length - cannot inspect container", id)
+		}
+		// inspect container based only on fully-length container id.
+		container, err = dc.InspectContainer(id)
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to get inspect container to get pid, err=%v", err)
+			// only log error message and return stats (contains cgroups stats)
+			return stats, nil
+		}
+		pid = container.State.Pid
+	}
 
 	for cg, stat := range groupWrap {
 		var err error
@@ -221,24 +241,23 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 	}
 
 	if id != "/" {
-		if !isFullLengthID(id) {
-			return stats, fmt.Errorf("Container id %+v is not fully-length - cannot inspect container", id)
-		}
-		// inspect container based only on fully-length container id.
-		container, err := dc.InspectContainer(id)
-
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to get inspect container to get pid, err=%v", err)
-			// only log error message and return stats (contains cgroups stats)
-			return stats, nil
-		}
+		//if !isFullLengthID(id) {
+		//	return stats, fmt.Errorf("Container id %+v is not fully-length - cannot inspect container", id)
+		//}
+		//// inspect container based only on fully-length container id.
+		////container, err := dc.InspectContainer(id)
+		//
+		//if err != nil {
+		//	fmt.Fprintf(os.Stderr, "Unable to get inspect container to get pid, err=%v", err)
+		//	// only log error message and return stats (contains cgroups stats)
+		//	return stats, nil
+		//}
 
 		rootFs := "/"
-		pid := container.State.Pid
 
 		stats.Network, err = networkStatsFromProc(rootFs, pid)
 		extractContainerLabels := func(container *docker.Container) map[string]string {
-			res := map[string]string{}
+			res := map[string]string {}
 			config := container.Config
 			if config == nil {
 				return res
@@ -263,6 +282,12 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 		stats.Connection.Tcp6, err = tcpStatsFromProc(rootFs, pid, "net/tcp6")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Unable to get tcp6 stats from pid %d: %v", pid, err)
+		}
+	} else {
+		stats.Network, err = networkStatsFromRoot()
+		if err != nil {
+			// only log error message
+			fmt.Fprintf(os.Stderr, "Unable to get network stats, containerID=%v, %v", id, err)
 		}
 	}
 
@@ -375,6 +400,79 @@ func networkStatsFromProc(rootFs string, pid int) (ifaceStats []wrapper.NetworkI
 	}
 
 	return ifaceStats, nil
+}
+
+const networkInterfacesDir = "/sys/class/net"
+
+func listRootNetworkDevices() (devNames []string, _ error) {
+	entries, err := ioutil.ReadDir(networkInterfacesDir)
+	if err != nil {
+		return nil, err
+	}
+	devNames = []string {}
+	for _, e := range entries {
+		if e.Mode() & os.ModeSymlink == os.ModeSymlink {
+			e, err = os.Stat(filepath.Join(networkInterfacesDir, e.Name()))
+			if err != nil || !e.IsDir() {
+				continue
+			}
+			devNames = append(devNames, e.Name())
+		} else if e.IsDir() {
+			devNames = append(devNames, e.Name())
+		}
+	}
+	return devNames, nil
+}
+
+func networkStatsFromRoot() (ifaceStats []wrapper.NetworkInterface, _ error) {
+	devNames, err := listRootNetworkDevices()
+	if err != nil {
+		return nil, err
+	}
+	ifaceStats = []wrapper.NetworkInterface {}
+	for _, name := range(devNames) {
+		if isIgnoredDevice(name) {
+			continue
+		}
+		if stats, err := interfaceStatsFromDir(name); err != nil {
+			return nil, err
+		} else {
+			ifaceStats = append(ifaceStats, *stats)
+		}
+	}
+	return ifaceStats, nil
+}
+
+func interfaceStatsFromDir(ifaceName string) (*wrapper.NetworkInterface, error) {
+	stats := wrapper.NetworkInterface{Name: ifaceName}
+	statsValues := map[string]uint64 {}
+	for _, metric := range networkMetrics {
+		if metric == "name" {
+			continue
+		}
+		valb, err := ioutil.ReadFile(filepath.Join(networkInterfacesDir, ifaceName, "statistics", metric))
+		var val uint64
+		if err == nil {
+			val, err = strconv.ParseUint(strings.TrimSpace(string(valb)), 10, 64)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("couldn't read interface statistics %s/%s: %v", ifaceName, metric, err)
+		}
+		statsValues[metric] = val
+	}
+	setIfaceStatsFromMap(&stats, statsValues)
+	return &stats, nil
+}
+
+func setIfaceStatsFromMap(stats *wrapper.NetworkInterface, values map[string]uint64) {
+	stats.RxBytes = values["rx_bytes"]
+	stats.RxErrors = values["rx_errors"]
+	stats.RxPackets = values["rx_packets"]
+	stats.RxDropped = values["rx_dropped"]
+	stats.TxBytes = values["tx_bytes"]
+	stats.TxErrors = values["tx_errors"]
+	stats.TxPackets = values["tx_packets"]
+	stats.TxDropped = values["tx_dropped"]
 }
 
 func isIgnoredDevice(ifName string) bool {
