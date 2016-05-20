@@ -361,26 +361,20 @@ func isFullLengthID(dockerID string) bool {
 	return false
 }
 
-func networkStatsFromProc(rootFs string, pid int) (map[string]wrapper.NetworkInterface, error) {
+func networkStatsFromProc(rootFs string, pid int) (ifaceStats []wrapper.NetworkInterface, errout error) {
 
-	netStats := map[string]wrapper.NetworkInterface{}
 	netStatsFile := filepath.Join(rootFs, "proc", strconv.Itoa(pid), "/net/dev")
-
-	ifaceStats, err := scanInterfaceStats(netStatsFile)
+	var err error
+	ifaceStats, err = scanInterfaceStats(netStatsFile)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't read network stats: %v", err)
 	}
 
-	// return network stats as a map, where name of interface is a key
-	for _, ifaceStat := range ifaceStats {
-		netStats[ifaceStat.Name] = ifaceStat
-	}
-
-	if len(netStats) == 0 {
+	if len(ifaceStats) == 0 {
 		return nil, errors.New("No network interface found")
 	}
 
-	return netStats, nil
+	return ifaceStats, nil
 }
 
 func isIgnoredDevice(ifName string) bool {

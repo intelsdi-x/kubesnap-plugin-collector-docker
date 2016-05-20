@@ -49,15 +49,15 @@ type Stats interface {
 }
 
 type Statistics struct {
-	Network     map[string]NetworkInterface `json:"network"`
-	Connection  TcpInterface                `json:"connection"` //TCP, TCP6 connection stats
-	CgroupStats *cgroups.Stats              `json:"cgroups"`
-	Labels map[string]string `json:"labels"`
+	Network     []NetworkInterface `json:"network"`
+	Connection  TcpInterface       `json:"connection"` //TCP, TCP6 connection stats
+	CgroupStats *cgroups.Stats     `json:"cgroups"`
+	Labels      map[string]string  `json:"labels"`
 }
 
 type NetworkInterface struct {
 	// Name is the name of the network interface.
-	Name string `json:"-"`
+	Name string `json:"name"`
 
 	RxBytes   uint64 `json:"rx_bytes"`
 	RxPackets uint64 `json:"rx_packets"`
@@ -71,7 +71,7 @@ type NetworkInterface struct {
 
 func NewStatistics() *Statistics {
 	return &Statistics{
-		Network:     map[string]NetworkInterface{},
+		Network:     []NetworkInterface{},
 		CgroupStats: cgroups.NewStats(),
 		Connection: TcpInterface{
 			Tcp:  TcpStat{},
