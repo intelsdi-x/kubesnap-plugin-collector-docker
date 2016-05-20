@@ -160,6 +160,8 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 	metrics := []plugin.MetricType{}
 	var err error
 
+	networkMetrics := []string {}
+	ns.FromCompositionTags(wrapper.NetworkInterface{}, "", &networkMetrics)
 	// get list of all running containers
 	d.list, err = d.client.ListContainersAsMap()
 	if err != nil {
@@ -177,7 +179,7 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 	for _, rid := range rids {
 
 		if contSpec, exist := d.list[rid]; !exist {
-			return nil, fmt.Errorf("Docker container does not exist, container_id=", rid)
+			return nil, fmt.Errorf("Docker container does not exist, container_id=%s", rid)
 		} else {
 			stats, err := d.client.GetStatsFromContainer(contSpec.ID)
 			if err != nil {
@@ -268,24 +270,54 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 			case "network": //get docker network information
 				// support wildcard on interface name
 				netInterfaces := []string{}
+				ifaceMap := map[string]wrapper.NetworkInterface {}
+				for _, iface := range d.containers[id].Stats.Network {
+					ifaceMap[iface.Name] = iface
+				}
 				if metricName[0] == "*" {
-					for netInterface := range d.containers[id].Stats.Network {
-						netInterfaces = append(netInterfaces, netInterface)
+					for _, netInterface := range d.containers[id].Stats.Network {
+						netInterfaces = append(netInterfaces, netInterface.Name)
 					}
 				} else {
 					netInterfaces = append(netInterfaces, metricName[0])
 				}
-
-				for _, net := range netInterfaces {
-					metric := plugin.MetricType{
-						Timestamp_: time.Now(),
-						Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(statsType, net, metricName[1]),
-						Data_:      ns.GetValueByNamespace(d.containers[id].Stats.Network[net], metricName[1:]),
-						Tags_:      mt.Tags(),
-						Config_:    mt.Config(),
+				firstIface := wrapper.NetworkInterface{}
+				if netStats := d.containers[id].Stats.Network; len(netStats) > 0 {
+					firstIface = netStats[0]
+				}
+				if len(metricName)==1 {
+					// referring to most important interface only
+					var metricElems []string
+					if metricName[0] == "*" {
+						metricElems = networkMetrics
+					} else {
+						metricElems = []string {metricName[0]}
 					}
+					for _, elemName := range metricElems {
+						metric := plugin.MetricType{
+							Timestamp_: time.Now(),
+							Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).
+								AddStaticElements(statsType, elemName),
+							Data_:      ns.GetValueByNamespace(firstIface, []string {elemName}),
+							Tags_:      mt.Tags(),
+							Config_:    mt.Config(),
+						}
 
-					metrics = append(metrics, metric)
+						metrics = append(metrics, metric)
+					}
+				} else {
+					for _, ifaceName := range netInterfaces {
+						metric := plugin.MetricType{
+							Timestamp_: time.Now(),
+							Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).
+								AddStaticElements(statsType, ifaceName, metricName[1]),
+							Data_:      ns.GetValueByNamespace(ifaceMap[ifaceName], metricName[1:]),
+							Tags_:      mt.Tags(),
+							Config_:    mt.Config(),
+						}
+
+						metrics = append(metrics, metric)
+					}
 				}
 
 			}
@@ -338,7 +370,7 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	// take names of available metrics based on tags for containerData type; do not add prefix (empty string)
 	ns.FromCompositionTags(data, "spec", &specificationMetrics)
 	ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
-	ns.FromCompositionTags(data.Stats.Network, "", &networkMetrics)
+	ns.FromCompositionTags(wrapper.NetworkInterface{}, "", &networkMetrics)
 	ns.FromCompositionTags(data.Stats.Connection, "connection", &connectionMetrics)
 
 	for _, metricName := range specificationMetrics {
@@ -377,9 +409,20 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 			AddDynamicElement("docker_id", "an id of docker container").
 			AddStaticElement("network").
 			AddDynamicElement("network_interface", "a name of network interface").
-			AddStaticElements(strings.Split(metricName, "/")[1:]...)
+			AddStaticElement(metricName)
 
 		metricType := plugin.MetricType{
+			Namespace_: ns,
+		}
+
+		metricTypes = append(metricTypes, metricType)
+
+		ns = core.NewNamespace(NS_VENDOR, NS_PLUGIN).
+			AddDynamicElement("docker_id", "an id of docker container").
+			AddStaticElement("network").
+			AddStaticElement(metricName)
+
+		metricType = plugin.MetricType{
 			Namespace_: ns,
 		}
 

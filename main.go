@@ -30,6 +30,7 @@ import (
 
 func main() {
 
+	dockerInst := docker.New()
 	plugin.Start(
 		plugin.NewPluginMeta(
 			docker.NS_PLUGIN,
@@ -38,7 +39,7 @@ func main() {
 			[]string{},
 			[]string{plugin.SnapGOBContentType},
 			plugin.ConcurrencyCount(1)),
-			docker.New(),
+			dockerInst,
 			os.Args[1],
 	)
 }
