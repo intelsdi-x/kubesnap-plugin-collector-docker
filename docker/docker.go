@@ -248,7 +248,8 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 
 
 			case "cgroups": // get docker cgroups stats
-
+				////FIXME:REMOVEIT\/
+				//fmt.Fprintf(os.Stderr, "about to collect '%s' for '%s', whole requested ns: %v\n", metricName, id, mt.Namespace().Strings())
 				metric := plugin.MetricType{
 					Timestamp_: time.Now(),
 					Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
@@ -345,15 +346,19 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 		return nil, err
 	}
 
-	contSpec := arbitraryContainerSpecification(d.list)
-	arbitraryContID := contSpec.ID
+	//contSpec := arbitraryContainerSpecification(d.list)
+	//arbitraryContID := contSpec.ID
 
 	// get stats from an arbitrary container to initialize stats structure
-	stats, err = d.client.GetStatsFromContainer(arbitraryContID)
+	//stats, err = d.client.GetStatsFromContainer(arbitraryContID)
+	var rootStats *wrapper.Statistics
+	rootStats, err = d.client.GetStatsFromContainer("/")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Cannot initilize stats structure from an arbitrary choosen container, err=", err)
+		fmt.Fprintln(os.Stderr, "Cannot initialize stats structure from a root cgroup, err=", err)
 		return nil, err
 	}
+	// copy memory section from root container to have valid indexes in stats
+	stats.CgroupStats.MemoryStats = rootStats.CgroupStats.MemoryStats
 
 	// set new item to docker.container structure
 	data := containerData{

@@ -142,18 +142,18 @@ func (dc *dockerClient) GetContainerStats(id string, timeout time.Duration) (*do
 */
 
 // isRunningSystemd returns true if the host was booted with systemd
-func isRunningSystemd() bool {
-	// todo
-	/*
-		fi, err := os.Lstat("/run/systemd/system")
-		if err != nil {
-			return false
-		}
-		return fi.IsDir()
-	*/
-	// for POC
-	return true
-}
+//func isRunningSystemd() bool {
+//	// todo
+//	/*
+//		fi, err := os.Lstat("/run/systemd/system")
+//		if err != nil {
+//			return false
+//		}
+//		return fi.IsDir()
+//	*/
+//	// for POC
+//	return true
+//}
 
 func GetSubsystemPath(subsystem string, id string) (string, error) {
 	var groupPath string
@@ -164,14 +164,15 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 	}
 	if id == "/" {
 		groupPath = mountpoint
-	} else if isRunningSystemd() {
-		fmt.Fprintln(os.Stderr, "Debug: create path to cgroup for given docker id base on systemd")
-		slice := "system.slice"
-		// create path to cgroup for given docker id
-		groupPath = filepath.Join(mountpoint, slice, "docker-"+id+".scope")
+	//} else if isRunningSystemd() {
+	//	fmt.Fprintln(os.Stderr, "Debug: create path to cgroup for given docker id base on systemd")
+	//	slice := "system.slice"
+	//	// create path to cgroup for given docker id
+	//	groupPath = filepath.Join(mountpoint, slice, "docker-"+id+".scope")
 	} else {
 		// create path to cgroup for given docker id
-		groupPath = filepath.Join(mountpoint, "docker", id)
+		//groupPath = filepath.Join(mountpoint, "docker", id)
+		groupPath = filepath.Join(mountpoint, id)
 	}
 	return groupPath, nil
 }
@@ -184,6 +185,7 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 		groupWrap = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
 		err error
 		workingSet uint64
+		wrapperPaths map[string]string
 	)
 	var container *docker.Container
 	var pid int
@@ -200,15 +202,28 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 			return stats, nil
 		}
 		pid = container.State.Pid
+		// fill cgroup paths for wrapper elements according to parsed cgroup file
+		wrapperPaths, _ = parseProcCgroupFile(pid)
+	} else {
+		wrapperPaths = map[string]string {}
+		for cg, _ := range groupWrap {
+			if _, err := GetSubsystemPath(cg, "/"); err != nil {
+				continue
+			} else {
+				wrapperPaths[cg] = "/"
+			}
+		}
 	}
-
+	////FIXME:REMOVEIT\/
+	//fmt.Fprintf(os.Stderr, "cgroups for %s: %+v\n", id, wrapperPaths)
 	for cg, stat := range groupWrap {
 		var err error
 		var groupPath string
-		if id != "root" {
-			groupPath, err = GetSubsystemPath(cg, id)
+		var cgFound bool
+		if groupPath, cgFound = wrapperPaths[cg]; !cgFound {
+			continue
 		} else {
-			groupPath, err = GetSubsystemPath(cg, "/")
+			groupPath, err = GetSubsystemPath(cg, groupPath)
 		}
 
 		// get cgroup stats for given docker
@@ -549,4 +564,37 @@ func setInterfaceStatValues(fields []string, pointers []*uint64) error {
 		*pointers[i] = val
 	}
 	return nil
+}
+
+func parseProcCgroupFile(pid int) (map[string]string, error) {
+	cgroupPath := filepath.Join("/proc", strconv.Itoa(pid), "cgroup")
+	data, err := ioutil.ReadFile(cgroupPath)
+	res := map[string]string {}
+	if err != nil {
+		return res, err
+	}
+	reader := strings.NewReader(string(data))
+	scanner := bufio.NewScanner(reader)
+	scanner.Split(bufio.ScanLines)
+	getCgWrapperInString := func(source string) (group string, found bool) {
+		for cgroup, _ := range wrapper.Cgroups2Stats {
+			if strings.Index(source, cgroup) >=0 {
+				return cgroup, true
+			}
+		}
+		return "", false
+	}
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if _, found := getCgWrapperInString(line); !found {
+			continue
+		}
+		fields := strings.Split(line, ":")
+		if cgroup, found := getCgWrapperInString(fields[1]); !found {
+			continue
+		} else {
+			res[cgroup] = fields[2]
+		}
+	}
+	return res, nil
 }
