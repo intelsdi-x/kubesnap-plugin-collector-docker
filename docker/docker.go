@@ -119,11 +119,12 @@ func (d *docker) getRequestedIDs(mt ...plugin.MetricType) ([]string, error) {
 		rid := m.Namespace().Strings()[2]
 		if rid == "*" {
 			// all available dockers are requested
-			idsOfAllContainers := d.availableContainers()
+			rids := d.availableContainers()
 			//if len(idsOfAllContainers) == 0 {
 			//	return nil, errors.New("No docker container found")
 			//}
-			return append(idsOfAllContainers, "root"), nil
+			rids = appendIfMissing(rids, "root")
+			return rids, nil
 		} else if rid == "root" {
 			rids = appendIfMissing(rids, "root")
 			continue
@@ -282,10 +283,35 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 				} else {
 					netInterfaces = append(netInterfaces, metricName[0])
 				}
-				firstIface := wrapper.NetworkInterface{}
-				if netStats := d.containers[id].Stats.Network; len(netStats) > 0 {
-					firstIface = netStats[0]
+				extractFirstIfaceStats := func(containerId string, containerStats *wrapper.Statistics) wrapper.NetworkInterface {
+					addOtherStats := func(dest, other map[string]uint64) {
+						for k, v := range other {
+							if acc, ok := dest[k]; !ok {
+								dest[k] = v
+							} else {
+								dest[k] = acc + v
+							}
+						}
+						return
+					}
+					firstIface := wrapper.NetworkInterface{}
+					if containerId == "root" {
+						summary := map[string]uint64 {}
+						for _, iface := range containerStats.Network {
+							tmp := map[string]uint64 {}
+							client.SetMapFromIfaceStats(tmp, &iface)
+							addOtherStats(summary, tmp)
+						}
+						client.SetIfaceStatsFromMap(&firstIface, summary)
+						firstIface.Name = "total"
+					} else {
+						if netStats := containerStats.Network; len(netStats) > 0 {
+							firstIface = netStats[0]
+						}
+					}
+					return firstIface
 				}
+				firstIface := extractFirstIfaceStats(id, d.containers[id].Stats)
 				if len(metricName)==1 {
 					// referring to most important interface only
 					var metricElems []string

@@ -56,6 +56,13 @@ const (
 	aufsRWLayer = "diff"
 	// Path to the directory where docker stores log files if the json logging driver is enabled.
 	pathToContainersDir = "containers"
+	memLimitInBytesCounter = "memory.limit_in_bytes"
+	memSwapLimitInBytesCounter = "memory.memsw.limit_in_bytes"
+
+	// output stats key for limit in bytes
+	memLimitInBytesKey = "limit_in_bytes"
+	// output stats key for swap limit in bytes
+	memSwapLimitInBytesKey = "swap_limit_in_bytes"
 )
 
 type DockerClientInterface interface {
@@ -233,26 +240,33 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 			return nil, err
 		}
 
-		// calculate additional stats memory:working_set based on memory_stats
-		if totalInactiveAnon, ok := stats.CgroupStats.MemoryStats.Stats["total_inactive_anon"]; ok {
-			workingSet = stats.CgroupStats.MemoryStats.Usage.Usage
-			if workingSet < totalInactiveAnon {
-				workingSet = 0
-			} else {
-				workingSet -= totalInactiveAnon
-			}
+	}
 
-			if totalInactiveFile, ok := stats.CgroupStats.MemoryStats.Stats["total_inactive_file"]; ok {
-				if workingSet < totalInactiveFile {
-					workingSet = 0
-				} else {
-					workingSet -= totalInactiveFile
-				}
-			}
+	// calculate additional stats memory:working_set based on memory_stats
+	if totalInactiveAnon, ok := stats.CgroupStats.MemoryStats.Stats["total_inactive_anon"]; ok {
+		workingSet = stats.CgroupStats.MemoryStats.Usage.Usage
+		if workingSet < totalInactiveAnon {
+			workingSet = 0
+		} else {
+			workingSet -= totalInactiveAnon
 		}
 
-		stats.CgroupStats.MemoryStats.Stats["working_set"] = workingSet
-
+		if totalInactiveFile, ok := stats.CgroupStats.MemoryStats.Stats["total_inactive_file"]; ok {
+			if workingSet < totalInactiveFile {
+				workingSet = 0
+			} else {
+				workingSet -= totalInactiveFile
+			}
+		}
+	}
+	stats.CgroupStats.MemoryStats.Stats["working_set"] = workingSet
+	// gather memory limit
+	if cgPath, gotMem := wrapperPaths["memory"]; gotMem {
+		groupPath, _ := GetSubsystemPath("memory", cgPath)
+		memLimit, _ := ReadUintFromFile(filepath.Join(groupPath, memLimitInBytesCounter), 64)
+		memSwLimit, _ := ReadUintFromFile(filepath.Join(groupPath, memSwapLimitInBytesCounter), 64)
+		stats.CgroupStats.MemoryStats.Stats[memLimitInBytesKey] = memLimit
+		stats.CgroupStats.MemoryStats.Stats[memSwapLimitInBytesKey] = memSwLimit
 	}
 
 	if id != "/" {
@@ -458,6 +472,16 @@ func networkStatsFromRoot() (ifaceStats []wrapper.NetworkInterface, _ error) {
 	return ifaceStats, nil
 }
 
+func ReadUintFromFile(path string, bits int) (uint64, error) {
+	if valb, err := ioutil.ReadFile(path); err != nil {
+		return 0, err
+	} else {
+		var val uint64
+		val, err = strconv.ParseUint(strings.TrimSpace(string(valb)), 10, bits)
+		return val, err
+	}
+}
+
 func interfaceStatsFromDir(ifaceName string) (*wrapper.NetworkInterface, error) {
 	stats := wrapper.NetworkInterface{Name: ifaceName}
 	statsValues := map[string]uint64 {}
@@ -465,21 +489,17 @@ func interfaceStatsFromDir(ifaceName string) (*wrapper.NetworkInterface, error) 
 		if metric == "name" {
 			continue
 		}
-		valb, err := ioutil.ReadFile(filepath.Join(networkInterfacesDir, ifaceName, "statistics", metric))
-		var val uint64
-		if err == nil {
-			val, err = strconv.ParseUint(strings.TrimSpace(string(valb)), 10, 64)
-		}
+		val, err := ReadUintFromFile(filepath.Join(networkInterfacesDir, ifaceName, "statistics", metric), 64)
 		if err != nil {
 			return nil, fmt.Errorf("couldn't read interface statistics %s/%s: %v", ifaceName, metric, err)
 		}
 		statsValues[metric] = val
 	}
-	setIfaceStatsFromMap(&stats, statsValues)
+	SetIfaceStatsFromMap(&stats, statsValues)
 	return &stats, nil
 }
 
-func setIfaceStatsFromMap(stats *wrapper.NetworkInterface, values map[string]uint64) {
+func SetIfaceStatsFromMap(stats *wrapper.NetworkInterface, values map[string]uint64) {
 	stats.RxBytes = values["rx_bytes"]
 	stats.RxErrors = values["rx_errors"]
 	stats.RxPackets = values["rx_packets"]
@@ -488,6 +508,17 @@ func setIfaceStatsFromMap(stats *wrapper.NetworkInterface, values map[string]uin
 	stats.TxErrors = values["tx_errors"]
 	stats.TxPackets = values["tx_packets"]
 	stats.TxDropped = values["tx_dropped"]
+}
+
+func SetMapFromIfaceStats(values map[string]uint64, stats *wrapper.NetworkInterface) {
+	values["rx_bytes"] = stats.RxBytes
+	values["rx_errors"] = stats.RxErrors
+	values["rx_packets"] = stats.RxPackets
+	values["rx_dropped"] = stats.RxDropped
+	values["tx_bytes"] = stats.TxBytes
+	values["tx_errors"] = stats.TxErrors
+	values["tx_packets"] = stats.TxPackets
+	values["tx_dropped"] = stats.TxDropped
 }
 
 func isIgnoredDevice(ifName string) bool {
