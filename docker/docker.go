@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/client"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/network"
 	"github.com/intelsdi-x/snap-plugin-utilities/ns"
 	"github.com/intelsdi-x/snap/control/plugin"
 	"github.com/intelsdi-x/snap/control/plugin/cpolicy"
@@ -161,7 +162,7 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 	metrics := []plugin.MetricType{}
 	var err error
 
-	networkMetrics := []string {}
+	networkMetrics := []string{}
 	ns.FromCompositionTags(wrapper.NetworkInterface{}, "", &networkMetrics)
 	// get list of all running containers
 	d.list, err = d.client.ListContainersAsMap()
@@ -226,9 +227,20 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 
 				metrics = append(metrics, metric)
 
+			case "filesystem": //get docker filesystem info
+				metric := plugin.MetricType{
+					Timestamp_: time.Now(),
+					Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
+					Data_:      ns.GetValueByNamespace(d.containers[id].Stats.Filesystem, metricName),
+					Tags_:      mt.Tags(),
+					Config_:    mt.Config(),
+				}
+
+				metrics = append(metrics, metric)
+
 			case "labels":
-				labelKeys := []string {}
-				if metricName[0] =="*" {
+				labelKeys := []string{}
+				if metricName[0] == "*" {
 					for k, _ := range d.containers[id].Stats.Labels {
 						labelKeys = append(labelKeys, k)
 					}
@@ -246,7 +258,6 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 
 					metrics = append(metrics, metric)
 				}
-
 
 			case "cgroups": // get docker cgroups stats
 				////FIXME:REMOVEIT\/
@@ -272,7 +283,7 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 			case "network": //get docker network information
 				// support wildcard on interface name
 				netInterfaces := []string{}
-				ifaceMap := map[string]wrapper.NetworkInterface {}
+				ifaceMap := map[string]wrapper.NetworkInterface{}
 				for _, iface := range d.containers[id].Stats.Network {
 					ifaceMap[iface.Name] = iface
 				}
@@ -296,13 +307,13 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 					}
 					firstIface := wrapper.NetworkInterface{}
 					if containerId == "root" {
-						summary := map[string]uint64 {}
+						summary := map[string]uint64{}
 						for _, iface := range containerStats.Network {
-							tmp := map[string]uint64 {}
-							client.SetMapFromIfaceStats(tmp, &iface)
+							tmp := map[string]uint64{}
+							network.SetMapFromIfaceStats(tmp, &iface)
 							addOtherStats(summary, tmp)
 						}
-						client.SetIfaceStatsFromMap(&firstIface, summary)
+						network.SetIfaceStatsFromMap(&firstIface, summary)
 						firstIface.Name = "total"
 					} else {
 						if netStats := containerStats.Network; len(netStats) > 0 {
@@ -312,22 +323,22 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 					return firstIface
 				}
 				firstIface := extractFirstIfaceStats(id, d.containers[id].Stats)
-				if len(metricName)==1 {
+				if len(metricName) == 1 {
 					// referring to most important interface only
 					var metricElems []string
 					if metricName[0] == "*" {
 						metricElems = networkMetrics
 					} else {
-						metricElems = []string {metricName[0]}
+						metricElems = []string{metricName[0]}
 					}
 					for _, elemName := range metricElems {
 						metric := plugin.MetricType{
 							Timestamp_: time.Now(),
 							Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).
 								AddStaticElements(statsType, elemName),
-							Data_:      ns.GetValueByNamespace(firstIface, []string {elemName}),
-							Tags_:      mt.Tags(),
-							Config_:    mt.Config(),
+							Data_:   ns.GetValueByNamespace(firstIface, []string{elemName}),
+							Tags_:   mt.Tags(),
+							Config_: mt.Config(),
 						}
 
 						metrics = append(metrics, metric)
@@ -338,9 +349,9 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 							Timestamp_: time.Now(),
 							Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).
 								AddStaticElements(statsType, ifaceName, metricName[1]),
-							Data_:      ns.GetValueByNamespace(ifaceMap[ifaceName], metricName[1:]),
-							Tags_:      mt.Tags(),
-							Config_:    mt.Config(),
+							Data_:   ns.GetValueByNamespace(ifaceMap[ifaceName], metricName[1:]),
+							Tags_:   mt.Tags(),
+							Config_: mt.Config(),
 						}
 
 						metrics = append(metrics, metric)
@@ -372,11 +383,6 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 		return nil, err
 	}
 
-	//contSpec := arbitraryContainerSpecification(d.list)
-	//arbitraryContID := contSpec.ID
-
-	// get stats from an arbitrary container to initialize stats structure
-	//stats, err = d.client.GetStatsFromContainer(arbitraryContID)
 	var rootStats *wrapper.Statistics
 	rootStats, err = d.client.GetStatsFromContainer("/")
 	if err != nil {
@@ -385,6 +391,7 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	}
 	// copy memory section from root container to have valid indexes in stats
 	stats.CgroupStats.MemoryStats = rootStats.CgroupStats.MemoryStats
+	fmt.Fprintln(os.Stderr, "Debug, iza filesystem struct=", stats.Filesystem)
 
 	// set new item to docker.container structure
 	data := containerData{
@@ -397,14 +404,28 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	cgroupsMetrics := []string{}
 	networkMetrics := []string{}
 	connectionMetrics := []string{}
+	filesystemMetrics := []string{}
 
 	// take names of available metrics based on tags for containerData type; do not add prefix (empty string)
 	ns.FromCompositionTags(data, "spec", &specificationMetrics)
 	ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
 	ns.FromCompositionTags(wrapper.NetworkInterface{}, "", &networkMetrics)
 	ns.FromCompositionTags(data.Stats.Connection, "connection", &connectionMetrics)
+	ns.FromCompositionTags(data.Stats.Filesystem, "filesystem", &filesystemMetrics)
 
 	for _, metricName := range specificationMetrics {
+		ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
+			AddDynamicElement("docker_id", "an id of docker container").
+			AddStaticElements(strings.Split(metricName, "/")...)
+
+		metricType := plugin.MetricType{
+			Namespace_: ns,
+		}
+
+		metricTypes = append(metricTypes, metricType)
+	}
+
+	for _, metricName := range filesystemMetrics {
 		ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
 			AddDynamicElement("docker_id", "an id of docker container").
 			AddStaticElements(strings.Split(metricName, "/")...)
