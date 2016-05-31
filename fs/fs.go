@@ -75,12 +75,13 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 	fmt.Fprintln(os.Stderr, "Debug - GetFsStats enter, container.Id=", container.ID, " coontainer.Driver=", container.Driver)
 
 	var (
-		baseUsage           uint64
-		extraUsage          uint64
-		fsStats             *wrapper.FilesystemInterface
-		rootFsStorageDir    = storageDir
+		baseUsage uint64
+		extraUsage uint64
+		rootFsStorageDir = storageDir
 		logsFilesStorageDir string
 	)
+
+	fsStats := &wrapper.FilesystemInterface{}
 
 	if container.ID != "" {
 		fmt.Fprintln(os.Stderr, "Debug - GetFsStats not host")
@@ -109,46 +110,48 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 	}
 
 	fmt.Fprintln(os.Stderr, "Debug - GetFsStats, rootFsStorageDir=", rootFsStorageDir)
-	deviceInfo, err := fsInfo.GetDirFsDevice(rootFsStorageDir)
 
-	fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetDirFsDevice err=", err)
-	if err != nil {
-		return nil, err
-	}
+	if _, err := os.Stat(rootFsStorageDir); err == nil {
 
-	filesystems, err := fsInfo.GetGlobalFsInfo()
-	fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetGlobalInfo err=", err)
-	if err != nil {
-		return nil, fmt.Errorf("Cannot get global filesystem info, err=", err)
-	}
+		deviceInfo, err := fsInfo.GetDirFsDevice(rootFsStorageDir)
 
-	for _, fs := range filesystems {
-		if fs.Device == deviceInfo.Device {
-
-			fsStats = &wrapper.FilesystemInterface{
-				Device:          fs.Device,
-				Type:            fs.Type.String(),
-				Limit:           fs.Capacity,
-				Usage:           fs.Capacity - fs.Free,
-				InodesFree:      fs.InodesFree,
-				ReadsCompleted:  fs.DiskStats.ReadsCompleted,
-				ReadsMerged:     fs.DiskStats.ReadsMerged,
-				SectorsRead:     fs.DiskStats.SectorsRead,
-				ReadTime:        fs.DiskStats.ReadTime,
-				WritesCompleted: fs.DiskStats.WritesCompleted,
-				WritesMerged:    fs.DiskStats.WritesMerged,
-				SectorsWritten:  fs.DiskStats.SectorsWritten,
-				WriteTime:       fs.DiskStats.WriteTime,
-				IoInProgress:    fs.DiskStats.IoInProgress,
-				IoTime:          fs.DiskStats.IoTime,
-				WeightedIoTime:  fs.DiskStats.WeightedIoTime,
-			}
-
-			break
+		fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetDirFsDevice err=", err)
+		if err != nil {
+			return nil, err
 		}
-	}
 
-	if rootFsStorageDir != "" {
+		filesystems, err := fsInfo.GetGlobalFsInfo()
+		fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetGlobalInfo err=", err)
+		if err != nil {
+			return nil, fmt.Errorf("Cannot get global filesystem info, err=", err)
+		}
+
+		for _, fs := range filesystems {
+			if fs.Device == deviceInfo.Device {
+
+				fsStats = &wrapper.FilesystemInterface{
+					Device:          fs.Device,
+					Type:            fs.Type.String(),
+					Limit:           fs.Capacity,
+					Usage:           fs.Capacity - fs.Free,
+					InodesFree:      fs.InodesFree,
+					ReadsCompleted:  fs.DiskStats.ReadsCompleted,
+					ReadsMerged:     fs.DiskStats.ReadsMerged,
+					SectorsRead:     fs.DiskStats.SectorsRead,
+					ReadTime:        fs.DiskStats.ReadTime,
+					WritesCompleted: fs.DiskStats.WritesCompleted,
+					WritesMerged:    fs.DiskStats.WritesMerged,
+					SectorsWritten:  fs.DiskStats.SectorsWritten,
+					WriteTime:       fs.DiskStats.WriteTime,
+					IoInProgress:    fs.DiskStats.IoInProgress,
+					IoTime:          fs.DiskStats.IoTime,
+					WeightedIoTime:  fs.DiskStats.WeightedIoTime,
+				}
+
+				break
+			}
+		}
+
 		fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetDirUsage for rootFsStorageDir=", rootFsStorageDir)
 		baseUsage, err = fsInfo.GetDirUsage(rootFsStorageDir, time.Second)
 		fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetDirUsage err=", err)
@@ -157,7 +160,9 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 		}
 	}
 
-	if logsFilesStorageDir != "" {
+
+
+	if _, err := os.Stat(logsFilesStorageDir); err == nil {
 		fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetDirUsage for logsFilesStorageDir=", logsFilesStorageDir)
 		extraUsage, err = fsInfo.GetDirUsage(logsFilesStorageDir, time.Second)
 		fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetDirUsage err=", err)
@@ -165,6 +170,7 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", logsFilesStorageDir, err)
 		}
 	}
+
 
 	fsStats.BaseUsage = baseUsage
 	//filesystem total usage equals baseUsage+extraUsage(logs, configs, etc.)
@@ -476,6 +482,7 @@ func minor(devNumber uint64) uint {
 func (self *RealFsInfo) GetDirFsDevice(dir string) (*DeviceInfo, error) {
 	buf := new(syscall.Stat_t)
 	err := syscall.Stat(dir, buf)
+
 	if err != nil {
 		return nil, fmt.Errorf("stat failed on %s with error: %s", dir, err)
 	}
