@@ -83,10 +83,6 @@
 			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
 		},
 		{
-			"ImportPath": "github.com/golang/glog",
-			"Rev": "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
-		},
-		{
 			"ImportPath": "github.com/intelsdi-x/snap-plugin-utilities/ns",
 			"Rev": "04621af7a3979bcb8aaf08c3b6542b43fe0bf6cf"
 		},

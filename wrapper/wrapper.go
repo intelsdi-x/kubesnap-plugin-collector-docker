@@ -22,10 +22,6 @@ limitations under the License.
 package wrapper
 
 import (
-	//"io/ioutil"
-	//"path/filepath"
-	//"strconv"
-	//"strings"
 	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/cgroups/fs"
 )

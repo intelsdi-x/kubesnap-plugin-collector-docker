@@ -17,7 +17,6 @@ import (
 
 	"github.com/docker/docker/pkg/mount"
 	"github.com/fsouza/go-dockerclient"
-	"github.com/golang/glog"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
 	zfs "github.com/mistifyio/go-zfs"
 )
@@ -72,6 +71,9 @@ type DockerContext struct {
 }
 
 func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, error) {
+
+	fmt.Fprintln(os.Stderr, "Debug - GetFsStats enter, container.Id=", container.ID, " coontainer.Driver=", container.Driver)
+
 	var (
 		baseUsage           uint64
 		extraUsage          uint64
@@ -81,6 +83,7 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 	)
 
 	if container.ID != "" {
+		fmt.Fprintln(os.Stderr, "Debug - GetFsStats not host")
 		switch container.Driver {
 		case aufsStorageDriver:
 			// `/var/lib/docker/aufs/diff/<docker_id>`
@@ -94,19 +97,27 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 		// Path to the directory where docker stores log files, metadata and configs
 		// e.g. /var/lib/docker/container/<docker_id>
 		logsFilesStorageDir = filepath.Join(storageDir, pathToContainersDir, container.ID)
+	} else {
+		fmt.Fprintln(os.Stderr, "Debug - GetFsStats it's host")
 	}
 
 	fsInfo, err := NewFsInfo(container.Driver)
+	fmt.Fprintln(os.Stderr, "Debug - GetFsStats, NewFsInfo err=", err)
+
 	if err != nil {
 		return nil, err
 	}
 
+	fmt.Fprintln(os.Stderr, "Debug - GetFsStats, rootFsStorageDir=", rootFsStorageDir)
 	deviceInfo, err := fsInfo.GetDirFsDevice(rootFsStorageDir)
+
+	fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetDirFsDevice err=", err)
 	if err != nil {
 		return nil, err
 	}
 
 	filesystems, err := fsInfo.GetGlobalFsInfo()
+	fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetGlobalInfo err=", err)
 	if err != nil {
 		return nil, fmt.Errorf("Cannot get global filesystem info, err=", err)
 	}
@@ -138,14 +149,18 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 	}
 
 	if rootFsStorageDir != "" {
+		fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetDirUsage for rootFsStorageDir=", rootFsStorageDir)
 		baseUsage, err = fsInfo.GetDirUsage(rootFsStorageDir, time.Second)
+		fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetDirUsage err=", err)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", rootFsStorageDir, err)
 		}
 	}
 
 	if logsFilesStorageDir != "" {
+		fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetDirUsage for logsFilesStorageDir=", logsFilesStorageDir)
 		extraUsage, err = fsInfo.GetDirUsage(logsFilesStorageDir, time.Second)
+		fmt.Fprintln(os.Stderr, "Debug - GetFsStats, GetDirUsage err=", err)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", logsFilesStorageDir, err)
 		}
@@ -159,7 +174,9 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 }
 
 func NewFsInfo(storageDriver string) (FsInfo, error) {
+	fmt.Fprintln(os.Stderr, "Debug - NewFsInfo() enter, storageDriver=", storageDriver)
 	mounts, err := mount.GetMounts()
+	fmt.Fprintln(os.Stderr, "Debug - NewFsInfo(), getMounts err=", err)
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +218,7 @@ func NewFsInfo(storageDriver string) (FsInfo, error) {
 		}
 	}
 
+	fmt.Fprintln(os.Stderr, "Debug - NewFsInfo() exit")
 	return fsInfo, nil
 }
 
@@ -372,7 +390,7 @@ func (self *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, er
 				fs.Type = VFS
 			}
 			if err != nil {
-				glog.Errorf("Stat fs failed. Error: %v", err)
+				return nil, err
 			} else {
 				deviceSet[device] = struct{}{}
 				fs.DeviceInfo = DeviceInfo{
@@ -395,7 +413,7 @@ func getDiskStatsMap(diskStatsFile string) (map[string]DiskStats, error) {
 	file, err := os.Open(diskStatsFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			glog.Infof("not collecting filesystem statistics because file %q was not available", diskStatsFile)
+			fmt.Fprintf(os.Stderr, "Cannot collect filesystem statistics - file %s is not available", diskStatsFile)
 			return diskStatsMap, nil
 		}
 		return nil, err
@@ -491,21 +509,21 @@ func (self *RealFsInfo) GetDirUsage(dir string, timeout time.Duration) (uint64, 
 	stdoutb, souterr := ioutil.ReadAll(stdoutp)
 	stderrb, _ := ioutil.ReadAll(stderrp)
 	timer := time.AfterFunc(timeout, func() {
-		glog.Infof("killing cmd %v due to timeout(%s)", cmd.Args, timeout.String())
+		fmt.Fprintf(os.Stderr, "Killing cmd %v due to timeout(%s)", cmd.Args, timeout.String())
 		cmd.Process.Kill()
 	})
 	err = cmd.Wait()
 	timer.Stop()
 	if err != nil {
-		return 0, fmt.Errorf("du command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
+		return 0, fmt.Errorf("DU command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
 	}
 	stdout := string(stdoutb)
 	if souterr != nil {
-		glog.Errorf("failed to read from stdout for cmd %v - %v", cmd.Args, souterr)
+		fmt.Fprintf(os.Stderr,"Failed to read from stdout for cmd %v - %v", cmd.Args, souterr)
 	}
 	usageInKb, err := strconv.ParseUint(strings.Fields(stdout)[0], 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("cannot parse 'du' output %s - %s", stdout, err)
+		return 0, fmt.Errorf("Cannot parse 'du' output %s - %s", stdout, err)
 	}
 	return usageInKb * 1024, nil
 }
