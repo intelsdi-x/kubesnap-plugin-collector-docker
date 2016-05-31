@@ -515,12 +515,20 @@ func (self *RealFsInfo) GetDirUsage(dir string, timeout time.Duration) (uint64, 
 	err = cmd.Wait()
 	timer.Stop()
 	if err != nil {
-		return 0, fmt.Errorf("DU command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
+		fmt.Errorf("DU command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
 	}
 	stdout := string(stdoutb)
+
+	fmt.Fprintf(os.Stderr, "Debug - stdout=", stdout)
+
 	if souterr != nil {
-		fmt.Fprintf(os.Stderr,"Failed to read from stdout for cmd %v - %v", cmd.Args, souterr)
+		fmt.Fprintf(os.Stderr, "Failed to read from stdout for cmd %v - %v", cmd.Args, souterr)
 	}
+
+	if len(strings.Fields(stdout)[0]) == 0 {
+		return 0, fmt.Errorf("DU command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
+	}
+
 	usageInKb, err := strconv.ParseUint(strings.Fields(stdout)[0], 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("Cannot parse 'du' output %s - %s", stdout, err)
