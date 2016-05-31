@@ -391,6 +391,7 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	}
 	// copy memory section from root container to have valid indexes in stats
 	stats.CgroupStats.MemoryStats = rootStats.CgroupStats.MemoryStats
+	stats.CgroupStats.CpuStats = rootStats.CgroupStats.CpuStats
 	fmt.Fprintln(os.Stderr, "Debug, iza filesystem struct=", stats.Filesystem)
 
 	// set new item to docker.container structure
@@ -408,7 +409,9 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 
 	// take names of available metrics based on tags for containerData type; do not add prefix (empty string)
 	ns.FromCompositionTags(data, "spec", &specificationMetrics)
-	ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
+	//ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
+	ns.FromCompositeObject(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics,
+		ns.InspectNilPointers(ns.AlwaysFalse))
 	ns.FromCompositionTags(wrapper.NetworkInterface{}, "", &networkMetrics)
 	ns.FromCompositionTags(data.Stats.Connection, "connection", &connectionMetrics)
 	ns.FromCompositionTags(data.Stats.Filesystem, "filesystem", &filesystemMetrics)
