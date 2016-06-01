@@ -50,6 +50,10 @@ const (
 	memLimitInBytesKey = "limit_in_bytes"
 	// output stats key for swap limit in bytes
 	memSwapLimitInBytesKey = "swap_limit_in_bytes"
+
+	procfsMountEnv = "PROCFS_MOUNT"
+	procfsMountDef = "/proc"
+
 )
 
 type DockerClientInterface interface {
@@ -292,8 +296,15 @@ func isFullLengthID(dockerID string) bool {
 	return false
 }
 
+func getProcfsMount() string {
+	if mount := os.Getenv(procfsMountEnv); mount != "" {
+		return mount
+	}
+	return procfsMountDef
+}
+
 func parseProcCgroupFile(pid int) (map[string]string, error) {
-	cgroupPath := filepath.Join("/proc", strconv.Itoa(pid), "cgroup")
+	cgroupPath := filepath.Join(getProcfsMount(), strconv.Itoa(pid), "cgroup")
 	data, err := ioutil.ReadFile(cgroupPath)
 	res := map[string]string{}
 	if err != nil {
