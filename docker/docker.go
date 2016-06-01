@@ -36,6 +36,8 @@ import (
 
 	dock "github.com/fsouza/go-dockerclient"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
+	"runtime/debug"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/util"
 )
 
 const (
@@ -158,7 +160,17 @@ func appendIfMissing(items []string, newItem string) []string {
 	return append(items, newItem)
 }
 
+var lastStatsObj interface{}
+
 func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, error) {
+	//FIXME:REMOVEIT\/
+	defer func() {
+		if r := recover(); r != nil {
+			debug.PrintStack()
+			fmt.Fprintf(os.Stderr, "CM_) got some panic on board: %v, %+v; last stats: %+v \n", r, r, lastStatsObj)
+			panic(r)
+		}
+	}()
 	metrics := []plugin.MetricType{}
 	var err error
 
@@ -210,6 +222,9 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 		}
 
 		for _, id := range ids {
+			//FIXME:REMOVEIT\/
+			//fmt.Fprintf(os.Stderr, "CM_= collecting for id= %v, ns= %v\n", id, mt.Namespace())
+
 			statsType := mt.Namespace().Strings()[3]
 			metricName := mt.Namespace().Strings()[4:]
 
@@ -262,14 +277,25 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 			case "cgroups": // get docker cgroups stats
 				////FIXME:REMOVEIT\/
 				//fmt.Fprintf(os.Stderr, "about to collect '%s' for '%s', whole requested ns: %v\n", metricName, id, mt.Namespace().Strings())
-				metric := plugin.MetricType{
-					Timestamp_: time.Now(),
-					Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
-					Data_:      ns.GetValueByNamespace(d.containers[id].Stats.CgroupStats, metricName),
-					Tags_:      mt.Tags(),
-					Config_:    mt.Config(),
-				}
-				metrics = append(metrics, metric)
+				lastStatsObj = d.containers[id].Stats.CgroupStats
+				//metric := plugin.MetricType{
+				//	Timestamp_: time.Now(),
+				//	Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
+				//	Data_:      ns.GetValueByNamespace(d.containers[id].Stats.CgroupStats, metricName),
+				//	Tags_:      mt.Tags(),
+				//	Config_:    mt.Config(),
+				//}
+				//metrics = append(metrics, metric)
+				util.GetAllValuesByNamespace(d.containers[id].Stats.CgroupStats, metricName, func(path []string, val interface{}) {
+					metric := plugin.MetricType{
+						Timestamp_: time.Now(),
+						Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(path...),
+						Data_:      val,
+						Tags_:      mt.Tags(),
+						Config_:    mt.Config(),
+					}
+					metrics = append(metrics, metric)
+				})
 
 			case "connection": // get docker connection stats (tcp and tcp6)
 				metric := plugin.MetricType{
@@ -372,6 +398,14 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 }
 
 func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error) {
+	//FIXME:REMOVEIT\/
+	defer func() {
+		if r := recover(); r != nil {
+			debug.PrintStack()
+			fmt.Fprintf(os.Stderr, "GMT) got some panic on board: %v, %+v\n", r, r)
+			panic(r)
+		}
+	}()
 	var metricTypes []plugin.MetricType
 	stats := wrapper.NewStatistics()
 	var err error

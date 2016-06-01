@@ -178,6 +178,8 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 	}
 
 	////FIXME:REMOVEIT\/
+	//fmt.Fprintf(os.Stderr, "GSFC) cg paths for  %v are %+v \n", id, wrapperPaths)
+
 	for cg, stat := range groupWrap {
 		var err error
 		var groupPath string
@@ -300,24 +302,32 @@ func parseProcCgroupFile(pid int) (map[string]string, error) {
 	reader := strings.NewReader(string(data))
 	scanner := bufio.NewScanner(reader)
 	scanner.Split(bufio.ScanLines)
-	getCgWrapperInString := func(source string) (group string, found bool) {
+	getCgWrappersInLine := func(line string) (groups []string, found bool) {
+		groups = []string {}
+		found = false
 		for cgroup, _ := range wrapper.Cgroups2Stats {
-			if strings.Index(source, cgroup) >= 0 {
-				return cgroup, true
+			if strings.Index(","+ line +",", ","+ cgroup +",") >= 0 {
+				groups = append(groups, cgroup)
+				found = true
 			}
 		}
-		return "", false
+		if !found {
+			return nil, false
+		}
+		return groups, true
 	}
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if _, found := getCgWrapperInString(line); !found {
+		fields := strings.Split(line, ":")
+		if len(fields) < 2 {
 			continue
 		}
-		fields := strings.Split(line, ":")
-		if cgroup, found := getCgWrapperInString(fields[1]); !found {
+		if groups, found := getCgWrappersInLine(fields[1]); !found {
 			continue
 		} else {
-			res[cgroup] = fields[2]
+			for _, cgroup := range groups {
+				res[cgroup] = fields[2]
+			}
 		}
 	}
 	return res, nil
