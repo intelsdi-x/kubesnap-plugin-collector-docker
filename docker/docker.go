@@ -170,16 +170,8 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 	// get list of all running containers
 	d.list, err = d.client.ListContainersAsMap()
 
-	//todo: remove it
-	fmt.Fprintln(os.Stderr, "Debug, The list of running containers: (num_of_items=", len(d.list), ")")
-
-	for cnt, cont := range d.list {
-
-		fmt.Fprintln(os.Stderr, "Debug, ", cnt, " available container: id=", cont.ID, ", image=", cont.Image, ", names=", cont.Names)
-	}
-
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "The list of running containers cannot be retrived, err=%+v", err)
+		fmt.Fprintln(os.Stderr, "The list of running containers cannot be retrived, err=", err)
 		return nil, err
 	}
 
