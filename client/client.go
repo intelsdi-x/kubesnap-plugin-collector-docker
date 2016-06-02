@@ -135,9 +135,6 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 		if !isHost(id) {
 			groupPath = filepath.Join(groupPath, "docker-"+id+".scope")
 		}
-
-		//FIXME:REMOVEIT\/
-		fmt.Fprintln(os.Stderr, "Debug, set groupPath for !!systemd!! =%v", groupPath)
 		return groupPath, nil
 	}
 
@@ -146,17 +143,12 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 
 	}
 
-	//FIXME:REMOVEIT\/
-	fmt.Fprintln(os.Stderr, "Debug, set groupPath fon !!not_systemd!!=%v", groupPath)
-
 	return groupPath, nil
 }
 
 // GetStatsFromContainer returns docker containers stats: cgroups stats (cpu usage, memory usage, etc.) and network stats (tx_bytes, rx_bytes etc.)
 // Notes: incoming container id has to be full-length to be able to inspect container
 func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, error) {
-
-	fmt.Fprintln(os.Stderr, " Debug, getStats from cointaner id=%v", id)
 	var (
 		stats      = wrapper.NewStatistics()
 		groupWrap  = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
@@ -175,7 +167,7 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 		container, err = dc.InspectContainer(id)
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to get inspect container to get pid, err=%v", err)
+			fmt.Fprintf(os.Stderr, "Unable to get inspect container to get pid, err=", err)
 			// only log error message and return stats (contains cgroups stats)
 			return stats, nil
 		}
@@ -188,8 +180,13 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 		// get cgroup stats for given docker
 		err = stat.GetStats(groupPath, stats.CgroupStats)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Cannot obtain cgroups statistics, err=", err)
-			return nil, err
+			// just log about it
+			if isHost(id) {
+				fmt.Fprintln(os.Stderr, "Cannot obtain cgroups statistics for host, err=", err)
+			} else {
+				fmt.Fprintln(os.Stderr, "Cannot obtain cgroups statistics for container: id=", id, ", image=", container.Image, ", name=", container.Name, ", err=", err)
+			}
+			continue
 		}
 	}
 
@@ -212,7 +209,7 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 	}
 	stats.CgroupStats.MemoryStats.Stats["working_set"] = workingSet
 
-	/* ask about it
+	/* todo ask about it
 	// gather memory limit
 	if cgPath, gotMem := wrapperPaths["memory"]; gotMem {
 		groupPath, _ := GetSubsystemPath("memory", cgPath)

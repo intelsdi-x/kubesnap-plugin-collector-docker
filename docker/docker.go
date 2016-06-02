@@ -158,16 +158,26 @@ func appendIfMissing(items []string, newItem string) []string {
 	return append(items, newItem)
 }
 
-var lastStatsObj interface{}
-
 func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, error) {
-	metrics := []plugin.MetricType{}
 	var err error
+	metrics := []plugin.MetricType{}
+	d.list = map[string]dock.APIContainers{}
 
+	//get list of possible network metrics
 	networkMetrics := []string{}
 	ns.FromCompositionTags(wrapper.NetworkInterface{}, "", &networkMetrics)
+
 	// get list of all running containers
 	d.list, err = d.client.ListContainersAsMap()
+
+	//todo: remove it
+	fmt.Fprintln(os.Stderr, "Debug, The list of running containers: (num_of_items=", len(d.list), ")")
+
+	for cnt, cont := range d.list {
+
+		fmt.Fprintln(os.Stderr, "Debug, ", cnt, " available container: id=", cont.ID, ", image=", cont.Image, ", names=", cont.Names)
+	}
+
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "The list of running containers cannot be retrived, err=%+v", err)
 		return nil, err
@@ -183,7 +193,7 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 	for _, rid := range rids {
 
 		if contSpec, exist := d.list[rid]; !exist {
-			return nil, fmt.Errorf("Docker container does not exist, container_id=%s", rid)
+			return nil, fmt.Errorf("Docker container does not exist, container_id=", rid)
 		} else {
 			stats, err := d.client.GetStatsFromContainer(contSpec.ID)
 			if err != nil {
