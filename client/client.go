@@ -22,17 +22,12 @@ limitations under the License.
 package client
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/fsouza/go-dockerclient"
-	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/common"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/fs"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/network"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
@@ -50,10 +45,6 @@ const (
 	memLimitInBytesKey = "limit_in_bytes"
 	// output stats key for swap limit in bytes
 	memSwapLimitInBytesKey = "swap_limit_in_bytes"
-
-	procfsMountEnv = "PROCFS_MOUNT"
-	procfsMountDef = "/proc"
-
 )
 
 type DockerClientInterface interface {
@@ -113,29 +104,50 @@ func (dc *dockerClient) ListContainersAsMap() (map[string]docker.APIContainers, 
 }
 
 // isRunningSystemd returns true if the host was booted with systemd
-//func isRunningSystemd() bool {
-//	// todo
-//	/*
-//		fi, err := os.Lstat("/run/systemd/system")
-//		if err != nil {
-//			return false
-//		}
-//		return fi.IsDir()
-//	*/
-//	// for POC
-//	return true
-//}
+func isRunningSystemd() bool {
+	fi, err := os.Lstat("/run/systemd/system")
+	if err != nil {
+		return false
+	}
+	return fi.IsDir()
+}
+
+func isHost(id string) bool {
+	if id == "/" {
+		// it a host
+		return true
+	}
+
+	return false
+}
 
 func GetSubsystemPath(subsystem string, id string) (string, error) {
+	slice := "system.slice"
 	groupPath, err := cgroups.FindCgroupMountpoint(subsystem)
 	if err != nil {
 		fmt.Printf("[WARNING] Could not find mount point for %s\n", subsystem)
 		return "", err
 	}
-	if id != "/" {
-		// create path to cgroup for given docker id
-		groupPath = filepath.Join(groupPath, id)
+
+	if isRunningSystemd() {
+		groupPath = filepath.Join(groupPath, slice)
+
+		if !isHost(id) {
+			groupPath = filepath.Join(groupPath, "docker-"+id+".scope")
+		}
+
+		//FIXME:REMOVEIT\/
+		fmt.Fprintln(os.Stderr, "Debug, set groupPath for !!systemd!! =%v", groupPath)
+		return groupPath, nil
 	}
+
+	if !isHost(id) {
+		groupPath = filepath.Join(groupPath, id)
+
+	}
+
+	//FIXME:REMOVEIT\/
+	fmt.Fprintln(os.Stderr, "Debug, set groupPath fon !!not_systemd!!=%v", groupPath)
 
 	return groupPath, nil
 }
@@ -144,17 +156,18 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 // Notes: incoming container id has to be full-length to be able to inspect container
 func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, error) {
 
+	fmt.Fprintln(os.Stderr, " Debug, getStats from cointaner id=%v", id)
 	var (
-		stats        = wrapper.NewStatistics()
-		groupWrap    = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
-		err          error
-		workingSet   uint64
-		wrapperPaths map[string]string
+		stats      = wrapper.NewStatistics()
+		groupWrap  = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
+		err        error
+		workingSet uint64
 	)
 	container := &docker.Container{}
 
 	var pid int
-	if id != "/" {
+
+	if !isHost(id) {
 		if !isFullLengthID(id) {
 			return stats, fmt.Errorf("Container id %+v is not fully-length - cannot inspect container", id)
 		}
@@ -167,32 +180,10 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 			return stats, nil
 		}
 		pid = container.State.Pid
-		// fill cgroup paths for wrapper elements according to parsed cgroup file
-		wrapperPaths, _ = parseProcCgroupFile(pid)
-
-	} else {
-		wrapperPaths = map[string]string{}
-		for cg, _ := range groupWrap {
-			if _, err := GetSubsystemPath(cg, "/"); err != nil {
-				continue
-			} else {
-				wrapperPaths[cg] = "/"
-			}
-		}
 	}
 
-	////FIXME:REMOVEIT\/
-	//fmt.Fprintf(os.Stderr, "GSFC) cg paths for  %v are %+v \n", id, wrapperPaths)
-
 	for cg, stat := range groupWrap {
-		var err error
-		var groupPath string
-		var cgFound bool
-		if groupPath, cgFound = wrapperPaths[cg]; !cgFound {
-			continue
-		} else {
-			groupPath, err = GetSubsystemPath(cg, groupPath)
-		}
+		groupPath, err := GetSubsystemPath(cg, id)
 
 		// get cgroup stats for given docker
 		err = stat.GetStats(groupPath, stats.CgroupStats)
@@ -200,7 +191,6 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 			fmt.Fprintln(os.Stderr, "Cannot obtain cgroups statistics, err=", err)
 			return nil, err
 		}
-
 	}
 
 	// calculate additional stats memory:working_set based on memory_stats
@@ -221,6 +211,8 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 		}
 	}
 	stats.CgroupStats.MemoryStats.Stats["working_set"] = workingSet
+
+	/* ask about it
 	// gather memory limit
 	if cgPath, gotMem := wrapperPaths["memory"]; gotMem {
 		groupPath, _ := GetSubsystemPath("memory", cgPath)
@@ -229,8 +221,9 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 		stats.CgroupStats.MemoryStats.Stats[memLimitInBytesKey] = memLimit
 		stats.CgroupStats.MemoryStats.Stats[memSwapLimitInBytesKey] = memSwLimit
 	}
+	*/
 
-	if id != "/" {
+	if !isHost(id) {
 		rootFs := "/"
 
 		stats.Network, err = network.NetworkStatsFromProc(rootFs, pid)
@@ -294,52 +287,4 @@ func isFullLengthID(dockerID string) bool {
 		return true
 	}
 	return false
-}
-
-func getProcfsMount() string {
-	if mount := os.Getenv(procfsMountEnv); mount != "" {
-		return mount
-	}
-	return procfsMountDef
-}
-
-func parseProcCgroupFile(pid int) (map[string]string, error) {
-	cgroupPath := filepath.Join(getProcfsMount(), strconv.Itoa(pid), "cgroup")
-	data, err := ioutil.ReadFile(cgroupPath)
-	res := map[string]string{}
-	if err != nil {
-		return res, err
-	}
-	reader := strings.NewReader(string(data))
-	scanner := bufio.NewScanner(reader)
-	scanner.Split(bufio.ScanLines)
-	getCgWrappersInLine := func(line string) (groups []string, found bool) {
-		groups = []string {}
-		found = false
-		for cgroup, _ := range wrapper.Cgroups2Stats {
-			if strings.Index(","+ line +",", ","+ cgroup +",") >= 0 {
-				groups = append(groups, cgroup)
-				found = true
-			}
-		}
-		if !found {
-			return nil, false
-		}
-		return groups, true
-	}
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		fields := strings.Split(line, ":")
-		if len(fields) < 2 {
-			continue
-		}
-		if groups, found := getCgWrappersInLine(fields[1]); !found {
-			continue
-		} else {
-			for _, cgroup := range groups {
-				res[cgroup] = fields[2]
-			}
-		}
-	}
-	return res, nil
 }

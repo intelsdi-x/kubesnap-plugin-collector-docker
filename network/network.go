@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/common"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
 	"github.com/intelsdi-x/snap-plugin-utilities/ns"
 )
@@ -88,7 +87,7 @@ func interfaceStatsFromDir(ifaceName string) (*wrapper.NetworkInterface, error) 
 		if metric == "name" {
 			continue
 		}
-		val, err := common.ReadUintFromFile(filepath.Join(networkInterfacesDir, ifaceName, "statistics", metric), 64)
+		val, err := readUintFromFile(filepath.Join(networkInterfacesDir, ifaceName, "statistics", metric), 64)
 		if err != nil {
 			return nil, fmt.Errorf("couldn't read interface statistics %s/%s: %v", ifaceName, metric, err)
 		}
@@ -194,4 +193,14 @@ func setInterfaceStatValues(fields []string, pointers []*uint64) error {
 		*pointers[i] = val
 	}
 	return nil
+}
+
+func readUintFromFile(path string, bits int) (uint64, error) {
+	if valb, err := ioutil.ReadFile(path); err != nil {
+		return 0, err
+	} else {
+		var val uint64
+		val, err = strconv.ParseUint(strings.TrimSpace(string(valb)), 10, bits)
+		return val, err
+	}
 }

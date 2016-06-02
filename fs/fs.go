@@ -72,9 +72,9 @@ type DockerContext struct {
 
 func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, error) {
 	var (
-		baseUsage uint64
-		extraUsage uint64
-		rootFsStorageDir = storageDir
+		baseUsage           uint64
+		extraUsage          uint64
+		rootFsStorageDir    = storageDir
 		logsFilesStorageDir string
 	)
 
@@ -146,15 +146,12 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 		}
 	}
 
-
-
 	if _, err := os.Stat(logsFilesStorageDir); err == nil {
 		extraUsage, err = fsInfo.GetDirUsage(logsFilesStorageDir, time.Second)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", logsFilesStorageDir, err)
 		}
 	}
-
 
 	fsStats.BaseUsage = baseUsage
 	//filesystem total usage equals baseUsage+extraUsage(logs, configs, etc.)

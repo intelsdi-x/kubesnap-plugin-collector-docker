@@ -35,9 +35,7 @@ import (
 	"time"
 
 	dock "github.com/fsouza/go-dockerclient"
-	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/util"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
-	"runtime/debug"
 )
 
 const (
@@ -163,14 +161,6 @@ func appendIfMissing(items []string, newItem string) []string {
 var lastStatsObj interface{}
 
 func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, error) {
-	//FIXME:REMOVEIT\/
-	defer func() {
-		if r := recover(); r != nil {
-			debug.PrintStack()
-			fmt.Fprintf(os.Stderr, "CM_) got some panic on board: %v, %+v; last stats: %+v \n", r, r, lastStatsObj)
-			panic(r)
-		}
-	}()
 	metrics := []plugin.MetricType{}
 	var err error
 
@@ -223,7 +213,7 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 
 		for _, id := range ids {
 			//FIXME:REMOVEIT\/
-			//fmt.Fprintf(os.Stderr, "CM_= collecting for id= %v, ns= %v\n", id, mt.Namespace())
+			//fmt.Fprintf(os.Stderr, "Debug, CM_= collecting for id= %v, ns= %v\n", id, mt.Namespace())
 
 			statsType := mt.Namespace().Strings()[3]
 			metricName := mt.Namespace().Strings()[4:]
@@ -275,27 +265,15 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 				}
 
 			case "cgroups": // get docker cgroups stats
-				////FIXME:REMOVEIT\/
-				//fmt.Fprintf(os.Stderr, "about to collect '%s' for '%s', whole requested ns: %v\n", metricName, id, mt.Namespace().Strings())
-				lastStatsObj = d.containers[id].Stats.CgroupStats
-				//metric := plugin.MetricType{
-				//	Timestamp_: time.Now(),
-				//	Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
-				//	Data_:      ns.GetValueByNamespace(d.containers[id].Stats.CgroupStats, metricName),
-				//	Tags_:      mt.Tags(),
-				//	Config_:    mt.Config(),
-				//}
-				//metrics = append(metrics, metric)
-				util.GetAllValuesByNamespace(d.containers[id].Stats.CgroupStats, metricName, func(path []string, val interface{}) {
-					metric := plugin.MetricType{
-						Timestamp_: time.Now(),
-						Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(path...),
-						Data_:      val,
-						Tags_:      mt.Tags(),
-						Config_:    mt.Config(),
-					}
-					metrics = append(metrics, metric)
-				})
+
+				metric := plugin.MetricType{
+					Timestamp_: time.Now(),
+					Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
+					Data_:      ns.GetValueByNamespace(d.containers[id].Stats.CgroupStats, metricName),
+					Tags_:      mt.Tags(),
+					Config_:    mt.Config(),
+				}
+				metrics = append(metrics, metric)
 
 			case "connection": // get docker connection stats (tcp and tcp6)
 				metric := plugin.MetricType{
@@ -398,14 +376,6 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 }
 
 func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error) {
-	//FIXME:REMOVEIT\/
-	defer func() {
-		if r := recover(); r != nil {
-			debug.PrintStack()
-			fmt.Fprintf(os.Stderr, "GMT) got some panic on board: %v, %+v\n", r, r)
-			panic(r)
-		}
-	}()
 	var metricTypes []plugin.MetricType
 	stats := wrapper.NewStatistics()
 	var err error
@@ -442,7 +412,6 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 
 	// take names of available metrics based on tags for containerData type; do not add prefix (empty string)
 	ns.FromCompositionTags(data, "spec", &specificationMetrics)
-	//ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
 	ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
 	ns.FromCompositionTags(wrapper.NetworkInterface{}, "", &networkMetrics)
 	ns.FromCompositionTags(data.Stats.Connection, "connection", &connectionMetrics)
@@ -484,12 +453,15 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 		metricTypes = append(metricTypes, metricType)
 	}
 
-	ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
-		AddDynamicElement("docker_id", "an id of docker container").
-		AddStaticElement("labels").
-		AddDynamicElement("label", "name of a container label").
-		AddStaticElement("value")
-	metricTypes = append(metricTypes, plugin.MetricType{Namespace_: ns})
+	metricType := plugin.MetricType{
+		Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN).
+			AddDynamicElement("docker_id", "an id of docker container").
+			AddStaticElement("labels").
+			AddDynamicElement("label", "name of a container label").
+			AddStaticElement("value"),
+	}
+
+	metricTypes = append(metricTypes, metricType)
 
 	for _, metricName := range networkMetrics {
 		ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
