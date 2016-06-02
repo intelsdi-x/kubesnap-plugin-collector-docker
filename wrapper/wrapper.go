@@ -22,8 +22,8 @@ limitations under the License.
 package wrapper
 
 import (
-	"github.com/opencontainers/runc/libcontainer/cgroups"
-	"github.com/opencontainers/runc/libcontainer/cgroups/fs"
+	"github.com/intelsdi-x/kubesnap-opencontainers/libcontainer/cgroups"
+	"github.com/intelsdi-x/kubesnap-opencontainers/libcontainer/cgroups/fs"
 )
 
 var Cgroups2Stats = map[string]Stats{

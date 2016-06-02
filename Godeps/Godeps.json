@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/intelsdi-x/kubesnap-plugin-collector-docker",
-	"GoVersion": "go1.5",
-	"GodepVersion": "v69",
+	"GoVersion": "go1.6",
+	"GodepVersion": "v60",
 	"Deps": [
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
@@ -83,6 +83,26 @@
 			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
 		},
 		{
+			"ImportPath": "github.com/intelsdi-x/kubesnap-opencontainers/libcontainer/cgroups",
+			"Rev": "ba6629368a065ea72d705e0f241135b8e4ab2a5e"
+		},
+		{
+			"ImportPath": "github.com/intelsdi-x/kubesnap-opencontainers/libcontainer/cgroups/fs",
+			"Rev": "ba6629368a065ea72d705e0f241135b8e4ab2a5e"
+		},
+		{
+			"ImportPath": "github.com/intelsdi-x/kubesnap-opencontainers/libcontainer/configs",
+			"Rev": "ba6629368a065ea72d705e0f241135b8e4ab2a5e"
+		},
+		{
+			"ImportPath": "github.com/intelsdi-x/kubesnap-opencontainers/libcontainer/system",
+			"Rev": "ba6629368a065ea72d705e0f241135b8e4ab2a5e"
+		},
+		{
+			"ImportPath": "github.com/intelsdi-x/kubesnap-opencontainers/libcontainer/utils",
+			"Rev": "ba6629368a065ea72d705e0f241135b8e4ab2a5e"
+		},
+		{
 			"ImportPath": "github.com/intelsdi-x/snap-plugin-utilities/ns",
 			"Rev": "04621af7a3979bcb8aaf08c3b6542b43fe0bf6cf"
 		},
@@ -154,26 +174,6 @@
 			"ImportPath": "github.com/oleiade/reflections",
 			"Comment": "0.1.2-2-g632977f",
 			"Rev": "632977f98cd34d217c4b57d0840ec188b3d3dcaf"
-		},
-		{
-			"ImportPath": "github.com/opencontainers/runc/libcontainer/cgroups",
-			"Comment": "v0.0.6-45-g4c767d7",
-			"Rev": "4c767d7046a79a7cf29b810742e5f7f2564f2d0c"
-		},
-		{
-			"ImportPath": "github.com/opencontainers/runc/libcontainer/cgroups/fs",
-			"Comment": "v0.0.6-45-g4c767d7",
-			"Rev": "4c767d7046a79a7cf29b810742e5f7f2564f2d0c"
-		},
-		{
-			"ImportPath": "github.com/opencontainers/runc/libcontainer/configs",
-			"Comment": "v0.0.6-45-g4c767d7",
-			"Rev": "4c767d7046a79a7cf29b810742e5f7f2564f2d0c"
-		},
-		{
-			"ImportPath": "github.com/opencontainers/runc/libcontainer/system",
-			"Comment": "v0.0.6-45-g4c767d7",
-			"Rev": "4c767d7046a79a7cf29b810742e5f7f2564f2d0c"
 		},
 		{
 			"ImportPath": "github.com/pborman/uuid",

@@ -37,7 +37,7 @@ import (
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/network"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
 	"github.com/intelsdi-x/snap-plugin-utilities/ns"
-	"github.com/opencontainers/runc/libcontainer/cgroups"
+	"github.com/intelsdi-x/kubesnap-opencontainers/libcontainer/cgroups"
 )
 
 const endpoint string = "unix:///var/run/docker.sock"
@@ -55,6 +55,15 @@ const (
 	procfsMountDef = "/proc"
 
 )
+
+var procfsMount = procfsMountDef
+
+func init() {
+	tmp := os.Getenv(procfsMountEnv)
+	if tmp != "" {
+		procfsMount = tmp
+	}
+}
 
 type DockerClientInterface interface {
 	ListContainersAsMap() (map[string]docker.APIContainers, error)
@@ -297,10 +306,7 @@ func isFullLengthID(dockerID string) bool {
 }
 
 func getProcfsMount() string {
-	if mount := os.Getenv(procfsMountEnv); mount != "" {
-		return mount
-	}
-	return procfsMountDef
+	return procfsMount
 }
 
 func parseProcCgroupFile(pid int) (map[string]string, error) {
