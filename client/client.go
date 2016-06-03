@@ -125,7 +125,7 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 	slice := "system.slice"
 	groupPath, err := cgroups.FindCgroupMountpoint(subsystem)
 	if err != nil {
-		fmt.Printf("[WARNING] Could not find mount point for %s\n", subsystem)
+		fmt.Fprintf(os.Stderr, "[WARNING] Could not find mount point for %s\n", subsystem)
 		return "", err
 	}
 
@@ -176,7 +176,9 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 
 	for cg, stat := range groupWrap {
 		groupPath, err := GetSubsystemPath(cg, id)
-
+		if err != nil {
+			continue
+		}
 		// get cgroup stats for given docker
 		err = stat.GetStats(groupPath, stats.CgroupStats)
 		if err != nil {
