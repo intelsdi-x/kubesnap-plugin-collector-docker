@@ -135,6 +135,8 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 		if !isHost(id) {
 			groupPath = filepath.Join(groupPath, "docker-"+id+".scope")
 		}
+
+		fmt.Fprintf(os.Stderr, "Debug, recognized as systemd, groupPath=", groupPath)
 		return groupPath, nil
 	}
 
@@ -142,6 +144,8 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 		groupPath = filepath.Join(groupPath, id)
 
 	}
+
+	fmt.Fprintf(os.Stderr, "Debug, NOT recognized as systemd, groupPath=", groupPath)
 
 	return groupPath, nil
 }
