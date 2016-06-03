@@ -85,6 +85,7 @@ type DockerContext struct {
 }
 
 func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, error) {
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats START")
 	var (
 		baseUsage           uint64
 		extraUsage          uint64
@@ -110,26 +111,41 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 		logsFilesStorageDir = filepath.Join(storageDir, pathToContainersDir, container.ID)
 	}
 
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...")
 	fsInfo, err := NewFsInfo(container.Driver)
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...done, err=", err)
 	if err != nil {
 		return nil, err
 	}
 
+
+	//todo remove it
+	_, debug_err := os.Stat(rootFsStorageDir)
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2 check os.Stat(", rootFsStorageDir, ")=", debug_err)
+
 	if _, err := os.Stat(rootFsStorageDir); err == nil {
 
+		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.1 (GetDirFsDevice)...")
 		deviceInfo, err := fsInfo.GetDirFsDevice(rootFsStorageDir)
+		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.1 (GetDirFsDevice)...done, err=", err)
 		if err != nil {
 			return nil, err
 		}
 
+		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.2 (GetGlobalFsInfo)...")
+
 		filesystems, err := fsInfo.GetGlobalFsInfo()
+		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.2 (GetGlobalFsInfo)...done")
+
 		if err != nil {
 			return nil, fmt.Errorf("Cannot get global filesystem info, err=", err)
 		}
 
+		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3 (range over fs.Device)...")
+
 		for _, fs := range filesystems {
 			if fs.Device == deviceInfo.Device {
-
+				fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3.1 - fs device has been found!!")
 				fsStats = &wrapper.FilesystemInterface{
 					Device:          fs.Device,
 					Type:            fs.Type.String(),
@@ -153,24 +169,39 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 			}
 		}
 
-		baseUsage, err = fsInfo.GetDirUsage(rootFsStorageDir, time.Second)
+		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3 (range over fs.Device)...done")
 
+		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.4 (GetDirUsage)...")
+		baseUsage, err = fsInfo.GetDirUsage(rootFsStorageDir, time.Second)
+		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.4 (GetDirUsage)...done")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", rootFsStorageDir, err)
 		}
 	}
 
+	//todo remove it
+	_, debug_err2 := os.Stat(logsFilesStorageDir)
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 3 check _logsFile_ os.Stat(", logsFilesStorageDir, ")=", debug_err2)
+
 	if _, err := os.Stat(logsFilesStorageDir); err == nil {
+		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 3 (GetDirUsage)...")
 		extraUsage, err = fsInfo.GetDirUsage(logsFilesStorageDir, time.Second)
+		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 3 (GetDirUsage)...done, err=", err)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", logsFilesStorageDir, err)
 		}
 	}
 
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 4 (set base usage)...")
 	fsStats.BaseUsage = baseUsage
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 4 (set base usage)...done")
 	//filesystem total usage equals baseUsage+extraUsage(logs, configs, etc.)
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 5 (set extra usage)...")
 	fsStats.Usage = baseUsage + extraUsage
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 5 (set extra usage)...done")
 
+
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats END")
 	return fsStats, nil
 }
 
