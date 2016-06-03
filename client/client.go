@@ -283,7 +283,7 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 
 	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...")
 	stats.Filesystem, err = fs.GetFsStats(container)
-	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...done")
+	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...done, err=", err)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to get filesystem stats for docker: %v, err=", id, err)
 	}
