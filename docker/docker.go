@@ -36,6 +36,7 @@ import (
 
 	dock "github.com/fsouza/go-dockerclient"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
+	"runtime/debug"
 )
 
 const (
@@ -159,6 +160,13 @@ func appendIfMissing(items []string, newItem string) []string {
 }
 
 func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "CollectMetrics) defeated by error: %v\n", r)
+			debug.PrintStack()
+			panic(r)
+		}
+	}()
 	var err error
 	metrics := []plugin.MetricType{}
 	d.list = map[string]dock.APIContainers{}
@@ -378,6 +386,13 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 }
 
 func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "GetMetricTypes) defeated by error: %v\n", r)
+			debug.PrintStack()
+			panic(r)
+		}
+	}()
 	var metricTypes []plugin.MetricType
 	stats := wrapper.NewStatistics()
 	var err error
@@ -484,6 +499,17 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 			AddStaticElement(metricName)
 
 		metricType := plugin.MetricType{
+			Namespace_: ns,
+		}
+
+		metricTypes = append(metricTypes, metricType)
+
+		ns = core.NewNamespace(NS_VENDOR, NS_PLUGIN).
+			AddDynamicElement("docker_id", "an id of docker container").
+			AddStaticElement("network").
+			AddStaticElement(metricName)
+
+		metricType = plugin.MetricType{
 			Namespace_: ns,
 		}
 
