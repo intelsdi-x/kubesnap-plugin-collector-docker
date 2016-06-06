@@ -524,8 +524,7 @@ func (self *RealFsInfo) GetDirUsage(dir string, timeout time.Duration) (uint64, 
 	if dir == "" {
 		return 0, fmt.Errorf("invalid directory")
 	}
-	//cmd := exec.Command("nice", "-n", "19", "du", "-s", dir)
-	cmd := exec.Command("du", "-d", "0", dir)
+	cmd := exec.Command("nice", "-n", "19", "du", "-s", dir)
 	stdoutp, err := cmd.StdoutPipe()
 	if err != nil {
 		return 0, fmt.Errorf("failed to setup stdout for cmd %v - %v", cmd.Args, err)
