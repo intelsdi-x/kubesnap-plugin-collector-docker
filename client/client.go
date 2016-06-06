@@ -164,7 +164,6 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 
 	var pid int
 
-
 	if !isHost(id) {
 		if !isFullLengthID(id) {
 			return stats, fmt.Errorf("Container id %+v is not fully-length - cannot inspect container", id)
@@ -241,52 +240,68 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 	if !isHost(id) {
 		rootFs := "/"
 
-		stats.Network, err = network.NetworkStatsFromProc(rootFs, pid)
-		extractContainerLabels := func(container *docker.Container) map[string]string {
-			res := map[string]string{}
-			config := container.Config
-			if config == nil {
+		go func() { //network stats
+			stats.Network, err = network.NetworkStatsFromProc(rootFs, pid)
+			if err != nil {
+				// only log error message
+				fmt.Fprintf(os.Stderr, "Unable to get network stats, containerID=%+v, pid %d: %v", container.ID, pid, err)
+			}
+		}()
+
+		go func() { //labels
+			extractContainerLabels := func(container *docker.Container) map[string]string {
+				res := map[string]string{}
+				config := container.Config
+				if config == nil {
+					return res
+				}
+				for k, v := range config.Labels {
+					res[ns.ReplaceNotAllowedCharsInNamespacePart(k)] = v
+				}
 				return res
 			}
-			for k, v := range config.Labels {
-				res[ns.ReplaceNotAllowedCharsInNamespacePart(k)] = v
+
+			stats.Labels = extractContainerLabels(container)
+		}()
+
+		go func() {
+			//tcp stats
+			stats.Connection.Tcp, err = network.TcpStatsFromProc(rootFs, pid)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Unable to get tcp stats from pid %d: %v", pid, err)
 			}
-			return res
-		}
-		stats.Labels = extractContainerLabels(container)
+		}()
 
-		if err != nil {
-			// only log error message
-			fmt.Fprintf(os.Stderr, "Unable to get network stats, containerID=%+v, pid %d: %v", container.ID, pid, err)
-		}
-
-		stats.Connection.Tcp, err = network.TcpStatsFromProc(rootFs, pid)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to get tcp stats from pid %d: %v", pid, err)
-		}
-
-		stats.Connection.Tcp6, err = network.Tcp6StatsFromProc(rootFs, pid)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to get tcp6 stats from pid %d: %v", pid, err)
-		}
+		go func() {
+			//tcp6 stats
+			stats.Connection.Tcp6, err = network.Tcp6StatsFromProc(rootFs, pid)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Unable to get tcp6 stats from pid %d: %v", pid, err)
+			}
+		}()
 
 	} else {
-		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 4 (get network stats) ...")
-		stats.Network, err = network.NetworkStatsFromRoot()
-		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 4 (get network stats) ...done, err=", err)
+		go func() {
+			//network stats
+			fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 4 (get network stats) ...")
+			stats.Network, err = network.NetworkStatsFromRoot()
+			fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 4 (get network stats) ...done, err=", err)
+			if err != nil {
+				// only log error message
+				fmt.Fprintf(os.Stderr, "Unable to get network stats, containerID=%v, %v", id, err)
+			}
+		}()
+
+	}
+
+	go func() {
+		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...")
+		stats.Filesystem, err = fs.GetFsStats(container)
+		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...done, err=", err)
 		if err != nil {
-			// only log error message
-			fmt.Fprintf(os.Stderr, "Unable to get network stats, containerID=%v, %v", id, err)
+			fmt.Fprintf(os.Stderr, "Unable to get filesystem stats for docker: %v, err=", id, err)
 		}
-
-	}
-
-	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...")
-	stats.Filesystem, err = fs.GetFsStats(container)
-	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...done, err=", err)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to get filesystem stats for docker: %v, err=", id, err)
-	}
+	}()
 
 	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer, END")
 	return stats, nil

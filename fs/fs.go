@@ -4,7 +4,6 @@ package fs
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -15,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"bytes"
+	"encoding/binary"
 	"github.com/docker/docker/pkg/mount"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
@@ -41,6 +42,8 @@ const (
 
 	procfsMountEnv     = "PROCFS_MOUNT"
 	procfsMountDefault = "/proc"
+
+	fsTimeout = 5 * time.Second
 )
 
 var procfsMountPoint = getProcfsMountpoint()
@@ -118,7 +121,6 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 		return nil, err
 	}
 
-
 	//todo remove it
 	_, debug_err := os.Stat(rootFsStorageDir)
 	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2 check os.Stat(", rootFsStorageDir, ")=", debug_err)
@@ -172,7 +174,7 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3 (range over fs.Device)...done")
 
 		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.4 (GetDirUsage)...")
-		baseUsage, err = fsInfo.GetDirUsage(rootFsStorageDir, time.Second)
+		baseUsage, err = fsInfo.GetDirUsage(rootFsStorageDir, fsTimeout)
 		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.4 (GetDirUsage)...done")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", rootFsStorageDir, err)
@@ -185,7 +187,7 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 
 	if _, err := os.Stat(logsFilesStorageDir); err == nil {
 		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 3 (GetDirUsage)...")
-		extraUsage, err = fsInfo.GetDirUsage(logsFilesStorageDir, time.Second)
+		extraUsage, err = fsInfo.GetDirUsage(logsFilesStorageDir, fsTimeout)
 		fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 3 (GetDirUsage)...done, err=", err)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", logsFilesStorageDir, err)
@@ -199,7 +201,6 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 5 (set extra usage)...")
 	fsStats.Usage = baseUsage + extraUsage
 	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 5 (set extra usage)...done")
-
 
 	fmt.Fprintln(os.Stderr, "Debug, GetFsStats END")
 	return fsStats, nil
@@ -524,45 +525,44 @@ func (self *RealFsInfo) GetDirUsage(dir string, timeout time.Duration) (uint64, 
 	if dir == "" {
 		return 0, fmt.Errorf("invalid directory")
 	}
-	cmd := exec.Command("nice", "-n", "19", "du", "-s", dir)
-	stdoutp, err := cmd.StdoutPipe()
-	if err != nil {
-		return 0, fmt.Errorf("failed to setup stdout for cmd %v - %v", cmd.Args, err)
-	}
-	stderrp, err := cmd.StderrPipe()
-	if err != nil {
-		return 0, fmt.Errorf("failed to setup stderr for cmd %v - %v", cmd.Args, err)
+
+	cmd := exec.Command("du", "-s", dir)
+
+	resCh := make(chan []byte)
+	errCh := make(chan error)
+
+	defer close(resCh)
+	defer close(errCh)
+
+	go func() {
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			errCh <- err
+		}
+		resCh <- out
+	}()
+
+	timer := time.After(timeout)
+
+	select {
+	case err := <-errCh:
+		return 0, err
+
+	case res := <-resCh:
+		response := bytes.Fields(res)
+		if len(response) == 0 {
+			return 0, fmt.Errorf("The output of `du -s` command on dir %s is empty", dir)
+		}
+		usageInKb, numOfBytes := binary.Uvarint(bytes.Fields(res)[0])
+		if numOfBytes < 0 {
+			return 0, fmt.Errorf("The output of `du -s` command on dir %s is invalid", dir)
+		}
+		return usageInKb * 1024, nil
+
+	case <-timer:
+		return 0, fmt.Errorf("Timeout (%v sec) for executing a command: `du -s` on dir %s", timeout.Seconds(), dir)
 	}
 
-	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("failed to exec du - %v", err)
-	}
-	stdoutb, souterr := ioutil.ReadAll(stdoutp)
-	stderrb, _ := ioutil.ReadAll(stderrp)
-	timer := time.AfterFunc(timeout, func() {
-		fmt.Fprintf(os.Stderr, "Killing cmd %v due to timeout(%s)", cmd.Args, timeout.String())
-		cmd.Process.Kill()
-	})
-	err = cmd.Wait()
-	timer.Stop()
-	if err != nil {
-		fmt.Errorf("DU command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
-	}
-	stdout := string(stdoutb)
-
-	if souterr != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read from stdout for cmd %v - %v", cmd.Args, souterr)
-	}
-
-	if len(strings.Fields(stdout)[0]) == 0 {
-		return 0, fmt.Errorf("DU command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
-	}
-
-	usageInKb, err := strconv.ParseUint(strings.Fields(stdout)[0], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("Cannot parse 'du' output %s - %s", stdout, err)
-	}
-	return usageInKb * 1024, nil
 }
 
 func getVfsStats(path string) (total uint64, free uint64, avail uint64, inodes uint64, inodesFree uint64, err error) {
