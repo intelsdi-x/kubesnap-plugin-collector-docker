@@ -204,7 +204,6 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 			}
 
 		}
-
 	}
 
 	for _, mt := range mts {
@@ -399,6 +398,7 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 		fmt.Fprintln(os.Stderr, "Cannot initialize stats structure from a root cgroup, err=", err)
 		return nil, err
 	}
+
 
 	fmt.Fprintln(os.Stderr, "Debug, phase 3 - set stats to containerData...")
 	// set new item to docker.container structure
