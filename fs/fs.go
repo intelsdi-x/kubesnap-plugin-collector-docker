@@ -524,8 +524,18 @@ func (self *RealFsInfo) GetDirUsage(dir string, timeout time.Duration) (uint64, 
 	if dir == "" {
 		return 0, fmt.Errorf("invalid directory")
 	}
-	cmd := exec.Command("nice", "-n", "19", "du", "-s", dir)
-	stdoutp, err := cmd.StdoutPipe()
+	//cmd := exec.Command("nice", "-n", "19", "du", "-s", dir)
+	//stdoutp, err := cmd.StdoutPipe()
+	var cmd *exec.Cmd
+        index := 0
+        if strings.Compare(dir, storageDir) == 0 {
+           cmd = exec.Command("df", dir, "--output=used")
+            index = 1
+        } else {
+            cmd = exec.Command("du", "-s", dir)
+        }
+        stdoutp, err := cmd.StdoutPipe()
+
 	if err != nil {
 		return 0, fmt.Errorf("failed to setup stdout for cmd %v - %v", cmd.Args, err)
 	}
@@ -554,11 +564,11 @@ func (self *RealFsInfo) GetDirUsage(dir string, timeout time.Duration) (uint64, 
 		fmt.Fprintf(os.Stderr, "Failed to read from stdout for cmd %v - %v", cmd.Args, souterr)
 	}
 
-	if len(strings.Fields(stdout)[0]) == 0 {
-		return 0, fmt.Errorf("DU command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
-	}
+	//if len(strings.Fields(stdout)[0]) == 0 {
+	//	return 0, fmt.Errorf("DU command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
+	//}
 
-	usageInKb, err := strconv.ParseUint(strings.Fields(stdout)[0], 10, 64)
+	usageInKb, err := strconv.ParseUint(strings.Fields(stdout)[index], 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("Cannot parse 'du' output %s - %s", stdout, err)
 	}

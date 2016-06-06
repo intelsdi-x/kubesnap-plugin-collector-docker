@@ -36,6 +36,8 @@ import (
 
 	dock "github.com/fsouza/go-dockerclient"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
+	"runtime/debug"
+	"encoding/json"
 )
 
 const (
@@ -159,6 +161,22 @@ func appendIfMissing(items []string, newItem string) []string {
 }
 
 func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, error) {
+       //FIXME:REMOVEIT\/
+       var lastStats interface{}
+       var lastNs interface{}
+        defer func() {
+                if r := recover(); r != nil {
+                       fmt.Fprintf(os.Stderr, "CollectMetrics) defeated by error: %v\n", r)
+                       fmt.Fprintf(os.Stderr, "CollectMetrics) defeated at metric %v; error: %v\n", lastNs, r)
+                       strStats := fmt.Sprintf("%#v", lastStats)
+                       if jsonb, err := json.Marshal(lastStats); err == nil {
+                               strStats = string(jsonb)
+                       }
+                       fmt.Fprintf(os.Stderr, "CollectMetrics) last stats object: %v\n", strStats)
+                       debug.PrintStack()
+                       panic(r)
+               }
+	}()
 	var err error
 	metrics := []plugin.MetricType{}
 	d.list = map[string]dock.APIContainers{}
@@ -207,13 +225,15 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 	}
 
 	for _, mt := range mts {
-
+		//FIXME:REMOVEIT\/
+		lastNs = mt.Namespace()
 		ids, err := d.getRequestedIDs(mt)
 		if err != nil {
 			return nil, err
 		}
 
 		for _, id := range ids {
+			lastStats = d.containers[id].Stats
 			//FIXME:REMOVEIT\/
 			//fmt.Fprintf(os.Stderr, "Debug, CM_= collecting for id= %v, ns= %v\n", id, mt.Namespace())
 
@@ -378,6 +398,13 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 }
 
 func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "GetMetricTypes) defeated by error: %v\n", r)
+			debug.PrintStack()
+			panic(r)
+		}
+	}()
 	var metricTypes []plugin.MetricType
 	stats := wrapper.NewStatistics()
 	var err error
@@ -484,6 +511,17 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 			AddStaticElement(metricName)
 
 		metricType := plugin.MetricType{
+			Namespace_: ns,
+		}
+
+		metricTypes = append(metricTypes, metricType)
+
+		ns = core.NewNamespace(NS_VENDOR, NS_PLUGIN).
+			AddDynamicElement("docker_id", "an id of docker container").
+			AddStaticElement("network").
+			AddStaticElement(metricName)
+
+		metricType = plugin.MetricType{
 			Namespace_: ns,
 		}
 
