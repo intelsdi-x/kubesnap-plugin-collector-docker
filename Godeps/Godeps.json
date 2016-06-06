@@ -1,6 +1,7 @@
 {
 	"ImportPath": "github.com/intelsdi-x/kubesnap-plugin-collector-docker",
 	"GoVersion": "go1.5",
+	"GodepVersion": "v69",
 	"Deps": [
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
@@ -22,6 +23,66 @@
 			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
 		},
 		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/Sirupsen/logrus",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/opts",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/archive",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/fileutils",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/homedir",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/ioutils",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/parsers",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/pools",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/promise",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/stdcopy",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/system",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/ulimit",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/units",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/docker/docker/volume",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient/external/github.com/opencontainers/runc/libcontainer/user",
+			"Rev": "412c004d923b7b89701e7a1632de83f843657a03"
+		},
+		{
 			"ImportPath": "github.com/intelsdi-x/snap-plugin-utilities/ns",
 			"Rev": "04621af7a3979bcb8aaf08c3b6542b43fe0bf6cf"
 		},
@@ -35,7 +96,37 @@
 			"Rev": "5c1177efc47eccc10dc459e3be44083372ea08c3"
 		},
 		{
+			"ImportPath": "github.com/intelsdi-x/snap/control/plugin/cpolicy",
+			"Comment": "v0.13.0-beta-77-g5c1177e",
+			"Rev": "5c1177efc47eccc10dc459e3be44083372ea08c3"
+		},
+		{
+			"ImportPath": "github.com/intelsdi-x/snap/control/plugin/encoding",
+			"Comment": "v0.13.0-beta-77-g5c1177e",
+			"Rev": "5c1177efc47eccc10dc459e3be44083372ea08c3"
+		},
+		{
+			"ImportPath": "github.com/intelsdi-x/snap/control/plugin/encrypter",
+			"Comment": "v0.13.0-beta-77-g5c1177e",
+			"Rev": "5c1177efc47eccc10dc459e3be44083372ea08c3"
+		},
+		{
 			"ImportPath": "github.com/intelsdi-x/snap/core",
+			"Comment": "v0.13.0-beta-77-g5c1177e",
+			"Rev": "5c1177efc47eccc10dc459e3be44083372ea08c3"
+		},
+		{
+			"ImportPath": "github.com/intelsdi-x/snap/core/cdata",
+			"Comment": "v0.13.0-beta-77-g5c1177e",
+			"Rev": "5c1177efc47eccc10dc459e3be44083372ea08c3"
+		},
+		{
+			"ImportPath": "github.com/intelsdi-x/snap/core/ctypes",
+			"Comment": "v0.13.0-beta-77-g5c1177e",
+			"Rev": "5c1177efc47eccc10dc459e3be44083372ea08c3"
+		},
+		{
+			"ImportPath": "github.com/intelsdi-x/snap/core/serror",
 			"Comment": "v0.13.0-beta-77-g5c1177e",
 			"Rev": "5c1177efc47eccc10dc459e3be44083372ea08c3"
 		},
@@ -55,6 +146,11 @@
 			"Rev": "5c1177efc47eccc10dc459e3be44083372ea08c3"
 		},
 		{
+			"ImportPath": "github.com/mistifyio/go-zfs",
+			"Comment": "v2.1.1-18-g22c9b32",
+			"Rev": "22c9b32c84eb0d0c6f4043b6e90fc94073de92fa"
+		},
+		{
 			"ImportPath": "github.com/oleiade/reflections",
 			"Comment": "0.1.2-2-g632977f",
 			"Rev": "632977f98cd34d217c4b57d0840ec188b3d3dcaf"
@@ -65,9 +161,23 @@
 			"Rev": "4c767d7046a79a7cf29b810742e5f7f2564f2d0c"
 		},
 		{
+			"ImportPath": "github.com/opencontainers/runc/libcontainer/cgroups/fs",
+			"Comment": "v0.0.6-45-g4c767d7",
+			"Rev": "4c767d7046a79a7cf29b810742e5f7f2564f2d0c"
+		},
+		{
 			"ImportPath": "github.com/opencontainers/runc/libcontainer/configs",
 			"Comment": "v0.0.6-45-g4c767d7",
 			"Rev": "4c767d7046a79a7cf29b810742e5f7f2564f2d0c"
+		},
+		{
+			"ImportPath": "github.com/opencontainers/runc/libcontainer/system",
+			"Comment": "v0.0.6-45-g4c767d7",
+			"Rev": "4c767d7046a79a7cf29b810742e5f7f2564f2d0c"
+		},
+		{
+			"ImportPath": "github.com/pborman/uuid",
+			"Rev": "ca53cad383cad2479bbba7f7a1a05797ec1386e4"
 		},
 		{
 			"ImportPath": "github.com/robfig/cron",
