@@ -332,20 +332,20 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 						return
 					}
 					firstIface := wrapper.NetworkInterface{}
-					if containerId == "root" {
-						summary := map[string]uint64{}
-						for _, iface := range containerStats.Network {
-							tmp := map[string]uint64{}
-							network.SetMapFromIfaceStats(tmp, &iface)
-							addOtherStats(summary, tmp)
-						}
-						network.SetIfaceStatsFromMap(&firstIface, summary)
-						firstIface.Name = "total"
-					} else {
-						if netStats := containerStats.Network; len(netStats) > 0 {
-							firstIface = netStats[0]
-						}
+					//if containerId == "root" {
+					summary := map[string]uint64{}
+					for _, iface := range containerStats.Network {
+						tmp := map[string]uint64{}
+						network.SetMapFromIfaceStats(tmp, &iface)
+						addOtherStats(summary, tmp)
 					}
+					network.SetIfaceStatsFromMap(&firstIface, summary)
+					firstIface.Name = "total"
+					//} else {
+					//	if netStats := containerStats.Network; len(netStats) > 0 {
+					//		firstIface = netStats[0]
+					//	}
+					//}
 					return firstIface
 				}
 				firstIface := extractFirstIfaceStats(id, d.containers[id].Stats)
