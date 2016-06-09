@@ -205,7 +205,7 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 		if contSpec, exist := d.list[rid]; !exist {
 			return nil, fmt.Errorf("Docker container does not exist, container_id=", rid)
 		} else {
-			stats, err := d.client.GetStatsFromContainer(contSpec.ID)
+			stats, err := d.client.GetStatsFromContainer(contSpec.ID, true)
 			if err != nil {
 				return nil, err
 			}
@@ -419,7 +419,7 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	}
 
 	fmt.Fprintln(os.Stderr, "Debug, phase 2 - get stats from host...")
-	stats, err = d.client.GetStatsFromContainer("/")
+	stats, err = d.client.GetStatsFromContainer("/", false)
 	fmt.Fprintln(os.Stderr, "Debug, phase 2 - get stats from host...done, err=", err)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Cannot initialize stats structure from a root cgroup, err=", err)
@@ -449,7 +449,7 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
 	ns.FromCompositionTags(wrapper.NetworkInterface{}, "", &networkMetrics)
 	ns.FromCompositionTags(data.Stats.Connection, "connection", &connectionMetrics)
-	ns.FromCompositionTags(data.Stats.Filesystem, "filesystem", &filesystemMetrics)
+	ns.FromCompositionTags(wrapper.FilesystemInterface{}, "filesystem", &filesystemMetrics)
 
 	fmt.Fprintln(os.Stderr, "Debug, phase 4.1 - generate namespaces...")
 	for _, metricName := range specificationMetrics {
