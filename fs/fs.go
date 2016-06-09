@@ -72,14 +72,16 @@ func init() {
 		"/var/lib/docker/containers",
 	}
 
-	for _, path := range storagePaths {
-		fmt.Fprintf(os.Stderr, "Starting worker for %s\n", path)
-		if path == "/var/lib/docker" {
-			Col.worker(path, false)
-		} else {
-			Col.worker(path, true)
-		}
-	}
+	Col.worker(false, storagePaths[0])
+	Col.worker(true, storagePaths[1:]...)
+	//for _, path := range storagePaths {
+	//	fmt.Fprintf(os.Stderr, "Starting worker for %s\n", path)
+	//	if path == "/var/lib/docker" {
+	//		Col.worker(path, false)
+	//	} else {
+	//		Col.worker(path, true)
+	//	}
+	//}
 }
 
 type collector struct {
@@ -87,19 +89,21 @@ type collector struct {
 	DiskUsage map[string]uint64
 }
 
-func (c *collector) worker(dir string, forSubDirs bool) {
-	fmt.Fprintf(os.Stderr, "Worker started for %s with subdirs = %v\n", dir, forSubDirs)
-	go func(dir string, forSubDirs bool){
+func (c *collector) worker(forSubDirs bool, paths ...string) {
+	fmt.Fprintf(os.Stderr, "Worker started for %s with subdirs = %v\n", paths, forSubDirs)
+	go func(forSubDirs bool, paths ...string){
 		dirs := []string{}
-		if forSubDirs {
-			subdirs, _ := ioutil.ReadDir(dir)
-			for _, sd := range subdirs {
-				dirs = append(dirs, path.Join(dir, sd.Name()))
+		for _, p := range paths {
+			if forSubDirs {
+				subdirs, _ := ioutil.ReadDir(p)
+				for _, sd := range subdirs {
+					dirs = append(dirs, path.Join(p, sd.Name()))
+				}
+			} else {
+				dirs = append(dirs, paths...)
 			}
-		} else {
-			dirs = append(dirs, dir)
 		}
-		
+
 		if len(dirs) > 0 {
 			for {
 				for _, d := range dirs {
@@ -114,9 +118,9 @@ func (c *collector) worker(dir string, forSubDirs bool) {
 				}
 			}
 		} else {
-			fmt.Fprintf(os.Stderr, "Debug, driver for %s not present. Skipping...", dir)	
+			fmt.Fprintf(os.Stderr, "ERROR no storage points to collect", )
 		}
-	}(dir, forSubDirs)
+	}(forSubDirs, paths...)
 }
 
 func diskUsage(dir string) (uint64, error) {
