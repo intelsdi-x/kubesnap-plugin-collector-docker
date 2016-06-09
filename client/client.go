@@ -49,7 +49,7 @@ const (
 
 type DockerClientInterface interface {
 	ListContainersAsMap() (map[string]docker.APIContainers, error)
-	GetStatsFromContainer(string) (*wrapper.Statistics, error)
+	GetStatsFromContainer(string, bool) (*wrapper.Statistics, error)
 	InspectContainer(string) (*docker.Container, error)
 	FindCgroupMountpoint(string) (string, error)
 }
@@ -152,7 +152,7 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 
 // GetStatsFromContainer returns docker containers stats: cgroups stats (cpu usage, memory usage, etc.) and network stats (tx_bytes, rx_bytes etc.)
 // Notes: incoming container id has to be full-length to be able to inspect container
-func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, error) {
+func (dc *dockerClient) GetStatsFromContainer(id string, collectFs bool) (*wrapper.Statistics, error) {
 	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer, START")
 	var (
 		stats      = wrapper.NewStatistics()
@@ -280,14 +280,14 @@ func (dc *dockerClient) GetStatsFromContainer(id string) (*wrapper.Statistics, e
 		}
 
 	}
-
-	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...")
-	stats.Filesystem, err = fs.GetFsStats(container)
-	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...done, err=", err)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to get filesystem stats for docker: %v, err=", id, err)
+	if collectFs {
+		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...")
+		stats.Filesystem, err = fs.GetFsStats(container)
+		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...done, err=", err)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to get filesystem stats for docker: %v, err=", id, err)
+		}
 	}
-
 	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer, END")
 	return stats, nil
 }

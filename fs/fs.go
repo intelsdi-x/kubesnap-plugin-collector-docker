@@ -14,11 +14,13 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"sync"
 
 	"github.com/docker/docker/pkg/mount"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
 	zfs "github.com/mistifyio/go-zfs"
+
 )
 
 const (
@@ -52,6 +54,80 @@ func getProcfsMountpoint() string {
 	}
 
 	return procfsMountDefault
+}
+
+var Col collector
+//var root, cont sync.Once
+
+
+func init() {
+	Col.DiskUsage = map[string]uint64{}
+	Col.Mut = &sync.Mutex{}
+
+	storagePaths := []string{
+		"/var/lib/docker",
+		"/var/lib/docker/aufs/diff",
+		"/var/lib/docker/overlay",
+		"/var/lib/docker/zfs",
+		"/var/lib/docker/containers",
+	}
+
+	for _, path := range storagePaths {
+		fmt.Fprintf(os.Stderr, "Starting worker for %s\n", path)
+		if path == "/var/lib/docker" {
+			Col.worker(path, false)
+		} else {
+			Col.worker(path, true)
+		}
+	}
+}
+
+type collector struct {
+	Mut *sync.Mutex
+	DiskUsage map[string]uint64
+}
+
+func (c *collector) worker(dir string, forSubDirs bool) {
+	fmt.Fprintf(os.Stderr, "Worker started for %s with subdirs = %v\n", dir, forSubDirs)
+	go func(dir string, forSubDirs bool){
+		dirs := []string{}
+		if forSubDirs {
+			subdirs, _ := ioutil.ReadDir(dir)
+			for _, sd := range subdirs {
+				dirs = append(dirs, path.Join(dir, sd.Name()))
+			}
+		} else {
+			dirs = append(dirs, dir)
+		}
+		
+		if len(dirs) > 0 {
+			for {
+				for _, d := range dirs {
+					size, err := diskUsage(d)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "WORKER ERROR {%s} for %s\n", err, d)
+						break
+					}
+					c.Mut.Lock()
+					c.DiskUsage[d] = size
+					c.Mut.Unlock()
+				}
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "Debug, driver for %s not present. Skipping...", dir)	
+		}
+	}(dir, forSubDirs)
+}
+
+func diskUsage(dir string) (uint64, error) {
+	out, _ := exec.Command("du", "-s", dir).Output()
+	val := strings.Fields(string(out))[0]
+	size, err := strconv.ParseUint(val, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return size, nil
 }
 
 type partition struct {
@@ -521,58 +597,13 @@ func (self *RealFsInfo) GetDirFsDevice(dir string) (*DeviceInfo, error) {
 }
 
 func (self *RealFsInfo) GetDirUsage(dir string, timeout time.Duration) (uint64, error) {
-	if dir == "" {
-		return 0, fmt.Errorf("invalid directory")
+	Col.Mut.Lock()
+	size, ok := Col.DiskUsage[dir]
+	Col.Mut.Unlock()
+	if !ok {
+		return 0, fmt.Errorf("Disk usage not found for %s", dir)
 	}
-	//cmd := exec.Command("nice", "-n", "19", "du", "-s", dir)
-	//stdoutp, err := cmd.StdoutPipe()
-	var cmd *exec.Cmd
-        index := 0
-        if strings.Compare(dir, storageDir) == 0 {
-           cmd = exec.Command("df", dir, "--output=used")
-            index = 1
-        } else {
-            cmd = exec.Command("du", "-s", dir)
-        }
-        stdoutp, err := cmd.StdoutPipe()
-
-	if err != nil {
-		return 0, fmt.Errorf("failed to setup stdout for cmd %v - %v", cmd.Args, err)
-	}
-	stderrp, err := cmd.StderrPipe()
-	if err != nil {
-		return 0, fmt.Errorf("failed to setup stderr for cmd %v - %v", cmd.Args, err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("failed to exec du - %v", err)
-	}
-	stdoutb, souterr := ioutil.ReadAll(stdoutp)
-	stderrb, _ := ioutil.ReadAll(stderrp)
-	timer := time.AfterFunc(timeout, func() {
-		fmt.Fprintf(os.Stderr, "Killing cmd %v due to timeout(%s)", cmd.Args, timeout.String())
-		cmd.Process.Kill()
-	})
-	err = cmd.Wait()
-	timer.Stop()
-	if err != nil {
-		fmt.Errorf("DU command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
-	}
-	stdout := string(stdoutb)
-
-	if souterr != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read from stdout for cmd %v - %v", cmd.Args, souterr)
-	}
-
-	//if len(strings.Fields(stdout)[0]) == 0 {
-	//	return 0, fmt.Errorf("DU command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
-	//}
-
-	usageInKb, err := strconv.ParseUint(strings.Fields(stdout)[index], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("Cannot parse 'du' output %s - %s", stdout, err)
-	}
-	return usageInKb * 1024, nil
+	return size * 1024, nil
 }
 
 func getVfsStats(path string) (total uint64, free uint64, avail uint64, inodes uint64, inodesFree uint64, err error) {
