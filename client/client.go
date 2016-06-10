@@ -136,7 +136,7 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 			groupPath = filepath.Join(groupPath, "docker-"+id+".scope")
 		}
 
-		fmt.Fprintf(os.Stderr, "Debug, recognized as systemd, groupPath=", groupPath)
+		//fmt.Fprintf(os.Stderr, "Debug, recognized as systemd, groupPath=", groupPath)
 		return groupPath, nil
 	}
 
@@ -145,7 +145,7 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 
 	}
 
-	fmt.Fprintf(os.Stderr, "Debug, NOT recognized as systemd, groupPath=", groupPath)
+	//fmt.Fprintf(os.Stderr, "Debug, NOT recognized as systemd, groupPath=", groupPath)
 
 	return groupPath, nil
 }
@@ -153,7 +153,7 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 // GetStatsFromContainer returns docker containers stats: cgroups stats (cpu usage, memory usage, etc.) and network stats (tx_bytes, rx_bytes etc.)
 // Notes: incoming container id has to be full-length to be able to inspect container
 func (dc *dockerClient) GetStatsFromContainer(id string, collectFs bool) (*wrapper.Statistics, error) {
-	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer, START")
+	//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer, START")
 	var (
 		stats      = wrapper.NewStatistics()
 		groupWrap  = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
@@ -173,7 +173,7 @@ func (dc *dockerClient) GetStatsFromContainer(id string, collectFs bool) (*wrapp
 		container, err = dc.InspectContainer(id)
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to get inspect container to get pid, err=", err)
+			//fmt.Fprintf(os.Stderr, "Unable to get inspect container to get pid, err=", err)
 			// only log error message and return stats (contains cgroups stats)
 			return stats, nil
 		}
@@ -184,16 +184,16 @@ func (dc *dockerClient) GetStatsFromContainer(id string, collectFs bool) (*wrapp
 		var groupPath string
 		var err error
 
-		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 1 (subsystem path) - for cg=", cg, " ...")
+		//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 1 (subsystem path) - for cg=", cg, " ...")
 		groupPath, err = GetSubsystemPath(cg, id)
-		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 1 (subsystem path) - for cg=", cg, " ... done, err=", err)
+		//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 1 (subsystem path) - for cg=", cg, " ... done, err=", err)
 		if err != nil {
 			continue
 		}
 		// get cgroup stats for given docker
-		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 2 (get stats) - for cg=", cg, " for groupPath=", groupPath, " ...")
+		//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 2 (get stats) - for cg=", cg, " for groupPath=", groupPath, " ...")
 		err = stat.GetStats(groupPath, stats.CgroupStats)
-		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 2 (get stats) - for cg=", cg, " for groupPath=", groupPath, " ...done, err=", err)
+		//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 2 (get stats) - for cg=", cg, " for groupPath=", groupPath, " ...done, err=", err)
 		if err != nil {
 			// just log about it
 			if isHost(id) {
@@ -205,7 +205,7 @@ func (dc *dockerClient) GetStatsFromContainer(id string, collectFs bool) (*wrapp
 		}
 	}
 
-	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 3 (calculate memory_working_set) ...")
+	//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 3 (calculate memory_working_set) ...")
 	// calculate additional stats memory:working_set based on memory_stats
 	if totalInactiveAnon, ok := stats.CgroupStats.MemoryStats.Stats["total_inactive_anon"]; ok {
 		workingSet = stats.CgroupStats.MemoryStats.Usage.Usage
@@ -223,10 +223,10 @@ func (dc *dockerClient) GetStatsFromContainer(id string, collectFs bool) (*wrapp
 			}
 		}
 	}
-	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 3 (calculate memory_working_set) ... almost done")
+	//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 3 (calculate memory_working_set) ... almost done")
 	stats.CgroupStats.MemoryStats.Stats["working_set"] = workingSet
 
-	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 3 (calculate memory_working_set) ... done")
+	//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 3 (calculate memory_working_set) ... done")
 	/* todo ask about it
 	// gather memory limit
 	if cgPath, gotMem := wrapperPaths["memory"]; gotMem {
@@ -271,9 +271,9 @@ func (dc *dockerClient) GetStatsFromContainer(id string, collectFs bool) (*wrapp
 		}
 
 	} else {
-		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 4 (get network stats) ...")
+		//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 4 (get network stats) ...")
 		stats.Network, err = network.NetworkStatsFromRoot()
-		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 4 (get network stats) ...done, err=", err)
+		//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 4 (get network stats) ...done, err=", err)
 		if err != nil {
 			// only log error message
 			fmt.Fprintf(os.Stderr, "Unable to get network stats, containerID=%v, %v", id, err)
@@ -281,14 +281,14 @@ func (dc *dockerClient) GetStatsFromContainer(id string, collectFs bool) (*wrapp
 
 	}
 	if collectFs {
-		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...")
+		//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...")
 		stats.Filesystem, err = fs.GetFsStats(container)
-		fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...done, err=", err)
+		//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer phase 5 (get filesystem stats) ...done, err=", err)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Unable to get filesystem stats for docker: %v, err=", id, err)
 		}
 	}
-	fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer, END")
+	//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer, END")
 	return stats, nil
 }
 
