@@ -72,8 +72,8 @@ func init() {
 		"/var/lib/docker/containers",
 	}
 
-	Col.worker(false, storagePaths[0])
-	Col.worker(true, storagePaths[1:]...)
+	Col.worker(false, "root", storagePaths[0])
+	Col.worker(true, "containers", storagePaths[1:]...)
 	//for _, path := range storagePaths {
 	//	fmt.Fprintf(os.Stderr, "Starting worker for %s\n", path)
 	//	if path == "/var/lib/docker" {
@@ -89,9 +89,9 @@ type collector struct {
 	DiskUsage map[string]uint64
 }
 
-func (c *collector) worker(forSubDirs bool, paths ...string) {
-	fmt.Fprintf(os.Stderr, "Worker started for %s with subdirs = %v\n", paths, forSubDirs)
-	go func(forSubDirs bool, paths ...string){
+func (c *collector) worker(forSubDirs bool, id string, paths ...string) {
+	fmt.Fprintf(os.Stderr, "WORKER %s, started \n", id)
+	go func(forSubDirs bool, id string, paths ...string){
 		dirs := []string{}
 		for _, p := range paths {
 			if forSubDirs {
@@ -105,22 +105,25 @@ func (c *collector) worker(forSubDirs bool, paths ...string) {
 		}
 
 		if len(dirs) > 0 {
+			fmt.Fprintf(os.Stderr, "WORKER %s, main loop started", id)
 			for {
 				for _, d := range dirs {
 					size, err := diskUsage(d)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "WORKER ERROR {%s} for %s\n", err, d)
+						fmt.Fprintf(os.Stderr, "WORKER %s, ERROR {%s} for %s\n",id, err, d)
 						break
 					}
 					c.Mut.Lock()
 					c.DiskUsage[d] = size
 					c.Mut.Unlock()
+					fmt.Fprintf(os.Stderr, "WORKER %s, disk usge %s = %d\n", id, d, size)
 				}
+				time.Sleep(30 * time.Second)
 			}
 		} else {
-			fmt.Fprintf(os.Stderr, "ERROR no storage points to collect", )
+			fmt.Fprintf(os.Stderr, "WORKER %s, ERROR no storage points to collect", id)
 		}
-	}(forSubDirs, paths...)
+	}(forSubDirs, id, paths...)
 }
 
 func diskUsage(dir string) (uint64, error) {
@@ -601,12 +604,14 @@ func (self *RealFsInfo) GetDirFsDevice(dir string) (*DeviceInfo, error) {
 }
 
 func (self *RealFsInfo) GetDirUsage(dir string, timeout time.Duration) (uint64, error) {
+	fmt.Fprintf(os.Stderr, "DEBUG, GetDirUsage(%s)\n", dir)
 	Col.Mut.Lock()
 	size, ok := Col.DiskUsage[dir]
 	Col.Mut.Unlock()
 	if !ok {
 		return 0, fmt.Errorf("Disk usage not found for %s", dir)
 	}
+	fmt.Fprintf(os.Stderr, "DEBUG, GetDirUsage(%s)=%d\n", dir, size)
 	return size * 1024, nil
 }
 
