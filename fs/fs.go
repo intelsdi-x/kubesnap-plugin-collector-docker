@@ -231,6 +231,7 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 				fsStats = &wrapper.FilesystemInterface{
 					Device:          fs.Device,
 					Type:            fs.Type.String(),
+					Available:	 fs.Available,
 					Limit:           fs.Capacity,
 					Usage:           fs.Capacity - fs.Free,
 					InodesFree:      fs.InodesFree,
