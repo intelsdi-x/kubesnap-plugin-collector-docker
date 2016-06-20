@@ -1,6 +1,8 @@
 FROM golang:latest  
 ENV GOPATH=$GOPATH:/app
 ENV SNAP_PATH=/go/src/github.com/intelsdi-x/snap/build
+ENV PROCFS_MOUNT=/hostproc
+
 RUN apt-get update && \
     apt-get -y install facter && \
     apt-get -y install vim
