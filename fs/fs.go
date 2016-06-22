@@ -19,6 +19,7 @@ import (
 	"github.com/docker/docker/pkg/mount"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/mounts"
 	zfs "github.com/mistifyio/go-zfs"
 )
 
@@ -39,21 +40,7 @@ const (
 	pathToContainersDir = "containers"
 
 	storageDir = "/var/lib/docker"
-
-	procfsMountEnv     = "PROCFS_MOUNT"
-	procfsMountDefault = "/proc"
 )
-
-var procfsMountPoint = getProcfsMountpoint()
-
-func getProcfsMountpoint() string {
-	if procfsMount := os.Getenv(procfsMountEnv); procfsMount != "" {
-		//trim suffix in case that env var cointains slash in the end
-		return strings.TrimSuffix(procfsMount, "/")
-	}
-
-	return procfsMountDefault
-}
 
 var Col collector
 
@@ -482,7 +469,7 @@ func (self *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, er
 	filesystems := make([]Fs, 0)
 	deviceSet := make(map[string]struct{})
 
-	diskStatsMap, err := getDiskStatsMap(filepath.Join(procfsMountPoint, "diskstats"))
+	diskStatsMap, err := getDiskStatsMap(filepath.Join(mounts.ProcfsMountPoint, "diskstats"))
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +537,7 @@ func getDiskStatsMap(diskStatsFile string) (map[string]DiskStats, error) {
 		offset := 3
 		var stats = make([]uint64, wordLength-offset)
 		if len(stats) < 11 {
-			return nil, fmt.Errorf("could not parse all 11 columns of %s", filepath.Join(procfsMountPoint, "diskstats"))
+			return nil, fmt.Errorf("could not parse all 11 columns of %s", filepath.Join(mounts.ProcfsMountPoint, "diskstats"))
 		}
 		var error error
 		for i := offset; i < wordLength; i++ {
