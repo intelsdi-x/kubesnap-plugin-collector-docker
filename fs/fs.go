@@ -194,6 +194,7 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 
 		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.1 (GetDirFsDevice)...")
 		deviceInfo, err := fsInfo.GetDirFsDevice(rootFsStorageDir)
+		fmt.Fprintln(os.Stderr, "Debug, Iza - for id=%v", container.ID, ", deviceInfo = %v", deviceInfo)
 		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.1 (GetDirFsDevice)...done, err=", err)
 		if err != nil {
 			return nil, err
@@ -231,6 +232,13 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3 (range over fs.Device)...")
 
 		for _, fs := range filesystems {
+			fmt.Fprintln(os.Stderr, "Debug - Iza, GetFsStats for id=%v", container.ID, " for fs.Device=%v", fs.Device)
+			// todo change it, workaround to get fs metrics for host for all devices
+			if container.ID == "" {
+				fmt.Fprintln(os.Stderr, "Debug, Iza - use workaround")
+				deviceInfo.Device = fs.Device
+			}
+
 			if fs.Device == deviceInfo.Device {
 				//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3.1 - fs device has been found!!")
 				stats := wrapper.FilesystemInterface{
@@ -254,6 +262,7 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 					WeightedIoTime:  fs.DiskStats.WeightedIoTime,
 				}
 				if devName := getDeviceName(fs.Device); len(devName) > 0 {
+					fmt.Fprintln(os.Stderr, "Debug - Iza, Adding fs stats to map; fsStats[", devName, "]")
 					fsStats[devName] = stats
 				} else {
 					fmt.Fprintf(os.Stderr, "Unknown device name")
@@ -511,10 +520,10 @@ func (self *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, er
 		}
 	}
 
-	fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, retruned filesystems count=%v", len(filesystems))
+	fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, returned filesystems count=%v", len(filesystems))
 
 	for _, fs:= range filesystems {
-		fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, retruned filesystem=%v", fs.Device)
+		fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, returned filesystem=%v", fs.Device)
 	}
 
 	return filesystems, nil
