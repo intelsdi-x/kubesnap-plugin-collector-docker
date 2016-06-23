@@ -501,17 +501,29 @@ func (self *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, er
 					Major:  uint(partition.major),
 					Minor:  uint(partition.minor),
 				}
+				fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, for device=%v", device)
 				fs.DiskStats = diskStatsMap[device]
+				if _, exist := diskStatsMap[device];  !exist {
+					fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, stats for device=%v", device, " NOT exist!")
+				}
 				filesystems = append(filesystems, fs)
 			}
 		}
 	}
+
+	fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, retruned filesystems count=%v", len(filesystems))
+
+	for _, fs:= range filesystems {
+		fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, retruned filesystem=%v", fs.Device)
+	}
+
 	return filesystems, nil
 }
 
 var partitionRegex = regexp.MustCompile(`^(?:(?:s|xv)d[a-z]+\d*|dm-\d+)$`)
 
 func getDiskStatsMap(diskStatsFile string) (map[string]DiskStats, error) {
+	fmt.Fprintln(os.Stderr, "Debug iza, getDiskStatsMap from file %v", diskStatsFile)
 	diskStatsMap := make(map[string]DiskStats)
 	file, err := os.Open(diskStatsFile)
 	if err != nil {
@@ -561,6 +573,12 @@ func getDiskStatsMap(diskStatsFile string) (map[string]DiskStats, error) {
 		}
 		diskStatsMap[deviceName] = diskStats
 	}
+
+	//todo remove it
+	for devName, stats := range diskStatsMap {
+		fmt.Fprintln(os.Stderr, "Debug, Iza - devName=%v", devName, "; stats=%v", stats)
+	}
+
 	return diskStatsMap, nil
 }
 
