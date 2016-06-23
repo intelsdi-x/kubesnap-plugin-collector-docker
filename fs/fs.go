@@ -12,15 +12,15 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
-	"sync"
 
 	"github.com/docker/docker/pkg/mount"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/mounts"
 	zfs "github.com/mistifyio/go-zfs"
-
 )
 
 const (
@@ -40,25 +40,11 @@ const (
 	pathToContainersDir = "containers"
 
 	storageDir = "/var/lib/docker"
-
-	procfsMountEnv     = "PROCFS_MOUNT"
-	procfsMountDefault = "/proc"
 )
 
-var procfsMountPoint = getProcfsMountpoint()
-
-func getProcfsMountpoint() string {
-	if procfsMount := os.Getenv(procfsMountEnv); procfsMount != "" {
-		//trim suffix in case that env var cointains slash in the end
-		return strings.TrimSuffix(procfsMount, "/")
-	}
-
-	return procfsMountDefault
-}
-
 var Col collector
-//var root, cont sync.Once
 
+//var root, cont sync.Once
 
 func init() {
 	Col.DiskUsage = map[string]uint64{}
@@ -85,13 +71,13 @@ func init() {
 }
 
 type collector struct {
-	Mut *sync.Mutex
+	Mut       *sync.Mutex
 	DiskUsage map[string]uint64
 }
 
 func (c *collector) worker(forSubDirs bool, id string, paths ...string) {
 	//fmt.Fprintf(os.Stderr, "WORKER %s, started \n", id)
-	go func(forSubDirs bool, id string, paths ...string){
+	go func(forSubDirs bool, id string, paths ...string) {
 		dirs := []string{}
 		for _, p := range paths {
 			if forSubDirs {
@@ -110,7 +96,7 @@ func (c *collector) worker(forSubDirs bool, id string, paths ...string) {
 				for _, d := range dirs {
 					size, err := diskUsage(d)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "WORKER %s, ERROR {%s} for %s\n",id, err, d)
+						fmt.Fprintf(os.Stderr, "WORKER %s, ERROR {%s} for %s\n", id, err, d)
 						break
 					}
 					c.Mut.Lock()
@@ -167,16 +153,16 @@ type DockerContext struct {
 	DriverStatus map[string]string
 }
 
-func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, error) {
+func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInterface, error) {
 	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats START")
 	var (
 		baseUsage           uint64
-		extraUsage          uint64
+		logUsage            uint64
 		rootFsStorageDir    = storageDir
 		logsFilesStorageDir string
 	)
 
-	fsStats := &wrapper.FilesystemInterface{}
+	fsStats := map[string]wrapper.FilesystemInterface{}
 
 	if container.ID != "" {
 		switch container.Driver {
@@ -201,7 +187,6 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 		return nil, err
 	}
 
-
 	//todo remove it
 	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2 check os.Stat(", rootFsStorageDir, ")=", debug_err)
 
@@ -209,6 +194,7 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 
 		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.1 (GetDirFsDevice)...")
 		deviceInfo, err := fsInfo.GetDirFsDevice(rootFsStorageDir)
+		fmt.Fprintln(os.Stderr, "Debug, Iza - for id=%v", container.ID, ", deviceInfo = %v", deviceInfo)
 		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.1 (GetDirFsDevice)...done, err=", err)
 		if err != nil {
 			return nil, err
@@ -223,17 +209,45 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 			return nil, fmt.Errorf("Cannot get global filesystem info, err=", err)
 		}
 
+		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3 (range over fs.Device)...done")
+
+		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.4 (GetDirUsage)...")
+		baseUsage, err = fsInfo.GetDirUsage(rootFsStorageDir, time.Second)
+		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.4 (GetDirUsage)...done")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", rootFsStorageDir, err)
+		}
+
+		if _, err := os.Stat(logsFilesStorageDir); err == nil {
+			//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 3 (GetDirUsage)...")
+			logUsage, err = fsInfo.GetDirUsage(logsFilesStorageDir, time.Second)
+			//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 3 (GetDirUsage)...done, err=", err)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", logsFilesStorageDir, err)
+			}
+
+			baseUsage += logUsage
+		}
+
 		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3 (range over fs.Device)...")
 
 		for _, fs := range filesystems {
+			fmt.Fprintln(os.Stderr, "Debug - Iza, GetFsStats for id=%v", container.ID, " for fs.Device=%v", fs.Device)
+			// todo change it, workaround to get fs metrics for host for all devices
+			if container.ID == "" {
+				fmt.Fprintln(os.Stderr, "Debug, Iza - use workaround")
+				deviceInfo.Device = fs.Device
+			}
+
 			if fs.Device == deviceInfo.Device {
 				//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3.1 - fs device has been found!!")
-				fsStats = &wrapper.FilesystemInterface{
+				stats := wrapper.FilesystemInterface{
 					Device:          fs.Device,
 					Type:            fs.Type.String(),
-					Available:	 fs.Available,
+					Available:       fs.Available,
 					Limit:           fs.Capacity,
 					Usage:           fs.Capacity - fs.Free,
+					BaseUsage:       baseUsage,
 					InodesFree:      fs.InodesFree,
 					ReadsCompleted:  fs.DiskStats.ReadsCompleted,
 					ReadsMerged:     fs.DiskStats.ReadsMerged,
@@ -247,39 +261,28 @@ func GetFsStats(container *docker.Container) (*wrapper.FilesystemInterface, erro
 					IoTime:          fs.DiskStats.IoTime,
 					WeightedIoTime:  fs.DiskStats.WeightedIoTime,
 				}
+				if devName := getDeviceName(fs.Device); len(devName) > 0 {
+					fmt.Fprintln(os.Stderr, "Debug - Iza, Adding fs stats to map; fsStats[", devName, "]")
+					fsStats[devName] = stats
+				} else {
+					fmt.Fprintf(os.Stderr, "Unknown device name")
+					fsStats["unknown"] = stats
+				}
 
-				break
 			}
 		}
-
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3 (range over fs.Device)...done")
-
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.4 (GetDirUsage)...")
-		baseUsage, err = fsInfo.GetDirUsage(rootFsStorageDir, time.Second)
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.4 (GetDirUsage)...done")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", rootFsStorageDir, err)
-		}
 	}
 
-	if _, err := os.Stat(logsFilesStorageDir); err == nil {
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 3 (GetDirUsage)...")
-		extraUsage, err = fsInfo.GetDirUsage(logsFilesStorageDir, time.Second)
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 3 (GetDirUsage)...done, err=", err)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", logsFilesStorageDir, err)
-		}
-	}
+	/*
+		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 4 (set base usage)...")
+		fsStats.BaseUsage = baseUsage
+		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 4 (set base usage)...done")
+		//filesystem total usage equals baseUsage+extraUsage(logs, configs, etc.)
+		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 5 (set extra usage)...")
+		fsStats.Usage = baseUsage + extraUsage
+		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 5 (set extra usage)...done")
 
-	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 4 (set base usage)...")
-	fsStats.BaseUsage = baseUsage
-	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 4 (set base usage)...done")
-	//filesystem total usage equals baseUsage+extraUsage(logs, configs, etc.)
-	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 5 (set extra usage)...")
-	fsStats.Usage = baseUsage + extraUsage
-	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 5 (set extra usage)...done")
-
-
+	*/
 	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats END")
 	return fsStats, nil
 }
@@ -475,7 +478,7 @@ func (self *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, er
 	filesystems := make([]Fs, 0)
 	deviceSet := make(map[string]struct{})
 
-	diskStatsMap, err := getDiskStatsMap(filepath.Join(procfsMountPoint, "diskstats"))
+	diskStatsMap, err := getDiskStatsMap(filepath.Join(mounts.ProcfsMountPoint, "diskstats"))
 	if err != nil {
 		return nil, err
 	}
@@ -507,17 +510,29 @@ func (self *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, er
 					Major:  uint(partition.major),
 					Minor:  uint(partition.minor),
 				}
+				fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, for device=%v", device)
 				fs.DiskStats = diskStatsMap[device]
+				if _, exist := diskStatsMap[device];  !exist {
+					fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, stats for device=%v", device, " NOT exist!")
+				}
 				filesystems = append(filesystems, fs)
 			}
 		}
 	}
+
+	fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, returned filesystems count=%v", len(filesystems))
+
+	for _, fs:= range filesystems {
+		fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, returned filesystem=%v", fs.Device)
+	}
+
 	return filesystems, nil
 }
 
 var partitionRegex = regexp.MustCompile(`^(?:(?:s|xv)d[a-z]+\d*|dm-\d+)$`)
 
 func getDiskStatsMap(diskStatsFile string) (map[string]DiskStats, error) {
+	fmt.Fprintln(os.Stderr, "Debug iza, getDiskStatsMap from file %v", diskStatsFile)
 	diskStatsMap := make(map[string]DiskStats)
 	file, err := os.Open(diskStatsFile)
 	if err != nil {
@@ -543,7 +558,7 @@ func getDiskStatsMap(diskStatsFile string) (map[string]DiskStats, error) {
 		offset := 3
 		var stats = make([]uint64, wordLength-offset)
 		if len(stats) < 11 {
-			return nil, fmt.Errorf("could not parse all 11 columns of %s", filepath.Join(procfsMountPoint, "diskstats"))
+			return nil, fmt.Errorf("could not parse all 11 columns of %s", filepath.Join(mounts.ProcfsMountPoint, "diskstats"))
 		}
 		var error error
 		for i := offset; i < wordLength; i++ {
@@ -567,6 +582,12 @@ func getDiskStatsMap(diskStatsFile string) (map[string]DiskStats, error) {
 		}
 		diskStatsMap[deviceName] = diskStats
 	}
+
+	//todo remove it
+	for devName, stats := range diskStatsMap {
+		fmt.Fprintln(os.Stderr, "Debug, Iza - devName=%v", devName, "; stats=%v", stats)
+	}
+
 	return diskStatsMap, nil
 }
 
@@ -732,4 +753,9 @@ func getZfstats(poolName string) (uint64, uint64, uint64, error) {
 	total := dataset.Used + dataset.Avail + dataset.Usedbydataset
 
 	return total, dataset.Avail, dataset.Avail, nil
+}
+
+func getDeviceName(device string) string {
+	deviceNs := strings.Split(device, "/")
+	return deviceNs[len(deviceNs)-1]
 }
