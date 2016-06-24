@@ -45,11 +45,11 @@ type Stats interface {
 }
 
 type Statistics struct {
-	Network     []NetworkInterface   `json:"network"`
-	Connection  TcpInterface         `json:"connection"` //TCP, TCP6 connection stats
-	CgroupStats *cgroups.Stats       `json:"cgroups"`
-	Labels      map[string]string    `json:"labels"`
-	Filesystem  *FilesystemInterface `json:"filesystem"`
+	Network     []NetworkInterface             `json:"network"`
+	Connection  TcpInterface                   `json:"connection"` //TCP, TCP6 connection stats
+	CgroupStats *cgroups.Stats                 `json:"cgroups"`
+	Labels      map[string]string              `json:"labels"`
+	Filesystem  map[string]FilesystemInterface `json:"filesystem"`
 }
 
 type NetworkInterface struct {
@@ -136,7 +136,7 @@ func NewStatistics() *Statistics {
 			Tcp6: TcpStat{},
 		},
 		Labels:     map[string]string{},
-		Filesystem: &FilesystemInterface{},
+		Filesystem: map[string]FilesystemInterface{},
 	}
 }
 
