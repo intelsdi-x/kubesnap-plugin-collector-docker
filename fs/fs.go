@@ -544,10 +544,15 @@ func (self *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, er
 				}
 				fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, for device=%v", device)
 				fs.DiskStats = diskStatsMap[device]
-				if _, exist := diskStatsMap[device];  !exist {
+
+				if diskStats, exist := diskStatsMap[device];  exist {
+					fs.DiskStats = diskStats
+					filesystems = append(filesystems, fs)
+					fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, append filesystem for device=%v", device)
+				} else {
 					fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, stats for device=%v", device, " NOT exist!")
 				}
-				filesystems = append(filesystems, fs)
+
 			}
 		}
 	}
