@@ -211,9 +211,9 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 		logsFilesStorageDir = filepath.Join(storageDir, pathToContainersDir, container.ID)
 	}
 
-	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...")
+	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...")
 	fsInfo, err := NewFsInfo(container.Driver)
-	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...done, err=", err)
+	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...done, err=", err)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +303,7 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 			}
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "Debug, os.Stat failed: %v", err)
+		fmt.Fprintln(os.Stderr, "Os.Stat failed: %v; no fs stats will be available for container %v", err, container.ID)
 	}
 
 	/*
@@ -320,9 +320,6 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 	return fsStats, nil
 }
 
-//FIXME: RMVIT:: debug fs stats issues
-var onceShowMounts sync.Once
-
 func NewFsInfo(storageDriver string) (FsInfo, error) {
 	mounts, err := mount.GetMounts()
 	if err != nil {
@@ -335,15 +332,6 @@ func NewFsInfo(storageDriver string) (FsInfo, error) {
 	}
 
 	fsInfo.addSystemRootLabel(mounts)
-	//FIXME: RMVIT:: debug fs stats issues
-	onceShowMounts.Do(func() {
-		allMounts := ""
-		for _, mount := range mounts {
-			allMounts += fmt.Sprintf("\t%+v\n", mount)
-		}
-		fmt.Fprintf(os.Stderr, "All discovered mounts: %v", allMounts)
-	})
-
 	//fsInfo.addDockerImagesLabel(context, mounts)
 
 	//fsInfo.addRktImagesLabel(context, mounts)

@@ -46,7 +46,7 @@ const (
 	// namespace plugin name
 	NS_PLUGIN = "docker"
 	// version of plugin
-	VERSION = 815
+	VERSION = 8
 )
 
 type containerData struct {
