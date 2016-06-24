@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/mounts"
 )
 
 func TcpStatsFromProc(rootFs string, pid int) (wrapper.TcpStat, error) {
@@ -21,7 +22,7 @@ func Tcp6StatsFromProc(rootFs string, pid int) (wrapper.TcpStat, error) {
 }
 
 func tcpStatsFromProc(rootFs string, pid int, file string) (wrapper.TcpStat, error) {
-	tcpStatsFile := filepath.Join(rootFs, "proc", strconv.Itoa(pid), file)
+	tcpStatsFile := filepath.Join(rootFs, mounts.ProcfsMountPoint, strconv.Itoa(pid), file)
 
 	tcpStats, err := scanTcpStats(tcpStatsFile)
 	if err != nil {

@@ -34,10 +34,10 @@ import (
 	"strings"
 	"time"
 
+	"encoding/json"
 	dock "github.com/fsouza/go-dockerclient"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
 	"runtime/debug"
-	"encoding/json"
 )
 
 const (
@@ -161,21 +161,21 @@ func appendIfMissing(items []string, newItem string) []string {
 }
 
 func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, error) {
-       //FIXME:REMOVEIT\/
-       var lastStats interface{}
-       var lastNs interface{}
-        defer func() {
-                if r := recover(); r != nil {
-                       fmt.Fprintf(os.Stderr, "CollectMetrics) defeated by error: %v\n", r)
-                       fmt.Fprintf(os.Stderr, "CollectMetrics) defeated at metric %v; error: %v\n", lastNs, r)
-                       strStats := fmt.Sprintf("%#v", lastStats)
-                       if jsonb, err := json.Marshal(lastStats); err == nil {
-                               strStats = string(jsonb)
-                       }
-                       fmt.Fprintf(os.Stderr, "CollectMetrics) last stats object: %v\n", strStats)
-                       debug.PrintStack()
-                       panic(r)
-               }
+	//FIXME:REMOVEIT\/
+	var lastStats interface{}
+	var lastNs interface{}
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "CollectMetrics) defeated by error: %v\n", r)
+			fmt.Fprintf(os.Stderr, "CollectMetrics) defeated at metric %v; error: %v\n", lastNs, r)
+			strStats := fmt.Sprintf("%#v", lastStats)
+			if jsonb, err := json.Marshal(lastStats); err == nil {
+				strStats = string(jsonb)
+			}
+			fmt.Fprintf(os.Stderr, "CollectMetrics) last stats object: %v\n", strStats)
+			debug.PrintStack()
+			panic(r)
+		}
 	}()
 	var err error
 	metrics := []plugin.MetricType{}
@@ -255,15 +255,27 @@ func (d *docker) CollectMetrics(mts []plugin.MetricType) ([]plugin.MetricType, e
 				metrics = append(metrics, metric)
 
 			case "filesystem": //get docker filesystem info
-				metric := plugin.MetricType{
-					Timestamp_: time.Now(),
-					Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id).AddStaticElements(mt.Namespace().Strings()[3:]...),
-					Data_:      ns.GetValueByNamespace(d.containers[id].Stats.Filesystem, metricName),
-					Tags_:      mt.Tags(),
-					Config_:    mt.Config(),
+				devices := []string{}
+				if metricName[0] == "*" {
+					for deviceName := range d.containers[id].Stats.Filesystem {
+						devices = append(devices, deviceName)
+					}
+
+				} else {
+					devices = append(devices, metricName[0])
 				}
 
-				metrics = append(metrics, metric)
+				for _, device := range devices {
+					metric := plugin.MetricType{
+						Timestamp_: time.Now(),
+						Namespace_: core.NewNamespace(NS_VENDOR, NS_PLUGIN, id, statsType, device).AddStaticElements(mt.Namespace().Strings()[5:]...),
+						Data_:      ns.GetValueByNamespace(d.containers[id].Stats.Filesystem[device], metricName[1:]),
+						Tags_:      mt.Tags(),
+						Config_:    mt.Config(),
+					}
+
+					metrics = append(metrics, metric)
+				}
 
 			case "labels":
 				labelKeys := []string{}
@@ -426,7 +438,6 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 		return nil, err
 	}
 
-
 	//fmt.Fprintln(os.Stderr, "Debug, phase 3 - set stats to containerData...")
 	// set new item to docker.container structure
 	data := containerData{
@@ -449,7 +460,7 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	ns.FromCompositionTags(data.Stats.CgroupStats, "cgroups", &cgroupsMetrics)
 	ns.FromCompositionTags(wrapper.NetworkInterface{}, "", &networkMetrics)
 	ns.FromCompositionTags(data.Stats.Connection, "connection", &connectionMetrics)
-	ns.FromCompositionTags(wrapper.FilesystemInterface{}, "filesystem", &filesystemMetrics)
+	ns.FromCompositionTags(wrapper.FilesystemInterface{}, "", &filesystemMetrics)
 
 	//fmt.Fprintln(os.Stderr, "Debug, phase 4.1 - generate namespaces...")
 	for _, metricName := range specificationMetrics {
@@ -468,6 +479,8 @@ func (d *docker) GetMetricTypes(_ plugin.ConfigType) ([]plugin.MetricType, error
 	for _, metricName := range filesystemMetrics {
 		ns := core.NewNamespace(NS_VENDOR, NS_PLUGIN).
 			AddDynamicElement("docker_id", "an id of docker container").
+			AddStaticElement("filesystem").
+			AddDynamicElement("device_id", "an id of filesystem device").
 			AddStaticElements(strings.Split(metricName, "/")...)
 
 		metricType := plugin.MetricType{

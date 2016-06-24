@@ -33,9 +33,13 @@ import (
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
 	"github.com/intelsdi-x/snap-plugin-utilities/ns"
 	"github.com/opencontainers/runc/libcontainer/cgroups"
+	"strings"
+	"strconv"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/config"
 )
 
 const endpoint string = "unix:///var/run/docker.sock"
+const dockerVersionKey string = "Version"
 
 const (
 	memLimitInBytesCounter     = "memory.limit_in_bytes"
@@ -52,6 +56,7 @@ type DockerClientInterface interface {
 	GetStatsFromContainer(string, bool) (*wrapper.Statistics, error)
 	InspectContainer(string) (*docker.Container, error)
 	FindCgroupMountpoint(string) (string, error)
+	Version() ([]int, error)
 }
 
 type dockerClient struct {
@@ -62,6 +67,19 @@ type deviceInfo struct {
 	device string
 	major  string
 	minor  string
+}
+
+func init() {
+	getDockerVersion := func() []int {
+		dc := NewDockerClient()
+		version, err := dc.Version()
+		if err != nil {
+		panic(err)
+		}
+		return version
+	}
+	config.DockerVersion = getDockerVersion()
+	fmt.Fprintf(os.Stderr, "Docker runtime version: %v \n", config.DockerVersion)
 }
 
 func NewDockerClient() *dockerClient {
@@ -79,6 +97,32 @@ func (dc *dockerClient) FindCgroupMountpoint(subsystem string) (string, error) {
 
 func (dc *dockerClient) InspectContainer(id string) (*docker.Container, error) {
 	return dc.cl.InspectContainer(id)
+}
+
+// Version returns version of docker engine
+func (dc *dockerClient) Version() (version []int, _ error) {
+	version = []int {0, 0}
+	env, err := dc.cl.Version()
+	if err != nil {
+		return version, err
+	}
+	parseInt := func(str string, defVal int) int {
+		if val, err := strconv.ParseInt(str, 10, 64); err != nil {
+			return defVal
+		} else {
+			return int(val)
+		}
+	}
+	for _, kv := range *env {
+		kvs := strings.Split(kv, "=")
+		if kvs[0] != dockerVersionKey {
+			continue
+		}
+		versionSplit := strings.Split(kvs[1], ".")
+		version := []int {parseInt(versionSplit[0], 0), parseInt(versionSplit[1], 0)}
+		return version, nil
+	}
+	return version, nil
 }
 
 func (dc *dockerClient) ListContainersAsMap() (map[string]docker.APIContainers, error) {

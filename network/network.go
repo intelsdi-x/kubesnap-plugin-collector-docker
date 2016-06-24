@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/mounts"
 	"github.com/intelsdi-x/snap-plugin-utilities/ns"
 )
 
@@ -27,7 +28,7 @@ func getListOfNetworkMetrics() []string {
 
 func NetworkStatsFromProc(rootFs string, pid int) (ifaceStats []wrapper.NetworkInterface, errout error) {
 
-	netStatsFile := filepath.Join(rootFs, "proc", strconv.Itoa(pid), "/net/dev")
+	netStatsFile := filepath.Join(rootFs, mounts.ProcfsMountPoint, strconv.Itoa(pid), "/net/dev")
 	var err error
 	ifaceStats, err = scanInterfaceStats(netStatsFile)
 	if err != nil {
