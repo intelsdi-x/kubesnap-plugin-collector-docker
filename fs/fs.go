@@ -21,6 +21,7 @@ import (
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/mounts"
 	zfs "github.com/mistifyio/go-zfs"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/config"
 )
 
 const (
@@ -40,6 +41,10 @@ const (
 	pathToContainersDir = "containers"
 
 	storageDir = "/var/lib/docker"
+
+	userLayerFirstVersionMaj = 1
+	userLayerFirstVersionMin = 10
+	userLayerIdFile = "mount-id"
 )
 
 var Col collector
@@ -154,7 +159,7 @@ type DockerContext struct {
 }
 
 func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInterface, error) {
-	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats START")
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats START")
 	var (
 		baseUsage           uint64
 		logUsage            uint64
@@ -165,12 +170,38 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 	fsStats := map[string]wrapper.FilesystemInterface{}
 
 	if container.ID != "" {
+		getUserLayerId := func(storageDir, storageDriver, containerId string) (string, error) {
+			dockerVersion := config.DockerVersion
+			if dockerVersion[0] <= userLayerFirstVersionMaj && dockerVersion[1] < userLayerFirstVersionMin {
+				return containerId, nil
+			}
+			switch storageDriver {
+			case aufsStorageDriver:
+				fallthrough
+			case overlayStorageDriver:
+				idFilePath := filepath.Join(storageDir, "image", storageDriver, "layerdb", "mounts", containerId, userLayerIdFile)
+				idBytes, err := ioutil.ReadFile(idFilePath)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to read id of user-layer for container  %v from under path  %v\n", containerId, idFilePath)
+					return "", err
+				}
+				return string(idBytes), nil
+			default:
+				fmt.Fprintf(os.Stderr, "Unsupported storage driver; dont know how to determine id of user layer for container %v \n", containerId)
+				return "", fmt.Errorf("Unsupported storage driver; dont know how to determine id of user layer for container %v \n", containerId)
+			}
+		}
+		userLayerId, err := getUserLayerId(storageDir, container.Driver, container.ID)
+		if err != nil {
+			userLayerId = container.ID
+		}
+
 		switch container.Driver {
 		case aufsStorageDriver:
 			// `/var/lib/docker/aufs/diff/<docker_id>`
-			rootFsStorageDir = filepath.Join(storageDir, string(aufsStorageDriver), aufsRWLayer, container.ID)
+			rootFsStorageDir = filepath.Join(storageDir, string(aufsStorageDriver), aufsRWLayer, userLayerId)
 		case overlayStorageDriver:
-			rootFsStorageDir = filepath.Join(storageDir, string(overlayStorageDriver), container.ID)
+			rootFsStorageDir = filepath.Join(storageDir, string(overlayStorageDriver), userLayerId)
 		default:
 			return nil, fmt.Errorf("Filesystem stats for storage driver %+s have not been supported yet", container.Driver)
 		}
@@ -180,9 +211,9 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 		logsFilesStorageDir = filepath.Join(storageDir, pathToContainersDir, container.ID)
 	}
 
-	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...")
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...")
 	fsInfo, err := NewFsInfo(container.Driver)
-	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...done, err=", err)
+	fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...done, err=", err)
 	if err != nil {
 		return nil, err
 	}
@@ -271,6 +302,8 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 
 			}
 		}
+	} else {
+		fmt.Fprintln(os.Stderr, "Debug, os.Stat failed: %v", err)
 	}
 
 	/*
@@ -287,6 +320,9 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 	return fsStats, nil
 }
 
+//FIXME: RMVIT:: debug fs stats issues
+var onceShowMounts sync.Once
+
 func NewFsInfo(storageDriver string) (FsInfo, error) {
 	mounts, err := mount.GetMounts()
 	if err != nil {
@@ -299,6 +335,14 @@ func NewFsInfo(storageDriver string) (FsInfo, error) {
 	}
 
 	fsInfo.addSystemRootLabel(mounts)
+	//FIXME: RMVIT:: debug fs stats issues
+	onceShowMounts.Do(func() {
+		allMounts := ""
+		for _, mount := range mounts {
+			allMounts += fmt.Sprintf("\t%+v\n", mount)
+		}
+		fmt.Fprintf(os.Stderr, "All discovered mounts: %v", allMounts)
+	})
 
 	//fsInfo.addDockerImagesLabel(context, mounts)
 
