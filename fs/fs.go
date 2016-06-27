@@ -49,8 +49,6 @@ const (
 
 var Col collector
 
-//var root, cont sync.Once
-
 func init() {
 	Col.DiskUsage = map[string]uint64{}
 	Col.Mut = &sync.Mutex{}
@@ -65,14 +63,6 @@ func init() {
 
 	Col.worker(false, "root", storagePaths[0])
 	Col.worker(true, "containers", storagePaths[1:]...)
-	//for _, path := range storagePaths {
-	//	fmt.Fprintf(os.Stderr, "Starting worker for %s\n", path)
-	//	if path == "/var/lib/docker" {
-	//		Col.worker(path, false)
-	//	} else {
-	//		Col.worker(path, true)
-	//	}
-	//}
 }
 
 type collector struct {
@@ -159,7 +149,6 @@ type DockerContext struct {
 }
 
 func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInterface, error) {
-	fmt.Fprintln(os.Stderr, "Debug, GetFsStats START")
 	var (
 		baseUsage           uint64
 		logUsage            uint64
@@ -211,48 +200,29 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 		logsFilesStorageDir = filepath.Join(storageDir, pathToContainersDir, container.ID)
 	}
 
-	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...")
 	fsInfo, err := NewFsInfo(container.Driver)
-	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 1 (new fs info) ...done, err=", err)
 	if err != nil {
 		return nil, err
 	}
 
-	//todo remove it
-	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2 check os.Stat(", rootFsStorageDir, ")=", debug_err)
-
 	if _, err := os.Stat(rootFsStorageDir); err == nil {
-
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.1 (GetDirFsDevice)...")
 		deviceInfo, err := fsInfo.GetDirFsDevice(rootFsStorageDir)
-		fmt.Fprintln(os.Stderr, "Debug, Iza - for id=%v", container.ID, ", deviceInfo = %v", deviceInfo)
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.1 (GetDirFsDevice)...done, err=", err)
 		if err != nil {
 			return nil, err
 		}
 
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.2 (GetGlobalFsInfo)...")
-
 		filesystems, err := fsInfo.GetGlobalFsInfo()
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.2 (GetGlobalFsInfo)...done")
-
 		if err != nil {
 			return nil, fmt.Errorf("Cannot get global filesystem info, err=", err)
 		}
 
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3 (range over fs.Device)...done")
-
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.4 (GetDirUsage)...")
 		baseUsage, err = fsInfo.GetDirUsage(rootFsStorageDir, time.Second)
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.4 (GetDirUsage)...done")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", rootFsStorageDir, err)
 		}
 
 		if _, err := os.Stat(logsFilesStorageDir); err == nil {
-			//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 3 (GetDirUsage)...")
 			logUsage, err = fsInfo.GetDirUsage(logsFilesStorageDir, time.Second)
-			//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 3 (GetDirUsage)...done, err=", err)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Cannot get usage for dir=`%s`, err=%s", logsFilesStorageDir, err)
 			}
@@ -260,18 +230,13 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 			baseUsage += logUsage
 		}
 
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3 (range over fs.Device)...")
-
 		for _, fs := range filesystems {
-			fmt.Fprintln(os.Stderr, "Debug - Iza, GetFsStats for id=%v", container.ID, " for fs.Device=%v", fs.Device)
-			// todo change it, workaround to get fs metrics for host for all devices
+			// todo change it, that is a workaround to get fs metrics for host for all devices
 			if container.ID == "" {
-				fmt.Fprintln(os.Stderr, "Debug, Iza - use workaround")
 				deviceInfo.Device = fs.Device
 			}
 
 			if fs.Device == deviceInfo.Device {
-				//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 2.3.1 - fs device has been found!!")
 				stats := wrapper.FilesystemInterface{
 					Device:          fs.Device,
 					Type:            fs.Type.String(),
@@ -293,30 +258,17 @@ func GetFsStats(container *docker.Container) (map[string]wrapper.FilesystemInter
 					WeightedIoTime:  fs.DiskStats.WeightedIoTime,
 				}
 				if devName := getDeviceName(fs.Device); len(devName) > 0 {
-					fmt.Fprintln(os.Stderr, "Debug - Iza, Adding fs stats to map; fsStats[", devName, "]")
 					fsStats[devName] = stats
 				} else {
 					fmt.Fprintf(os.Stderr, "Unknown device name")
 					fsStats["unknown"] = stats
 				}
-
 			}
 		}
 	} else {
 		fmt.Fprintln(os.Stderr, "Os.Stat failed: %v; no fs stats will be available for container %v", err, container.ID)
 	}
 
-	/*
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 4 (set base usage)...")
-		fsStats.BaseUsage = baseUsage
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 4 (set base usage)...done")
-		//filesystem total usage equals baseUsage+extraUsage(logs, configs, etc.)
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 5 (set extra usage)...")
-		fsStats.Usage = baseUsage + extraUsage
-		//fmt.Fprintln(os.Stderr, "Debug, GetFsStats, phase 5 (set extra usage)...done")
-
-	*/
-	//fmt.Fprintln(os.Stderr, "Debug, GetFsStats END")
 	return fsStats, nil
 }
 
@@ -332,9 +284,6 @@ func NewFsInfo(storageDriver string) (FsInfo, error) {
 	}
 
 	fsInfo.addSystemRootLabel(mounts)
-	//fsInfo.addDockerImagesLabel(context, mounts)
-
-	//fsInfo.addRktImagesLabel(context, mounts)
 
 	supportedFsType := map[string]bool{
 		// all ext systems are checked through prefix.
@@ -408,57 +357,7 @@ func (self *RealFsInfo) addSystemRootLabel(mounts []*mount.Info) {
 	}
 }
 
-/*
-// addDockerImagesLabel attempts to determine which device contains the mount for docker images.
-func (self *RealFsInfo) addDockerImagesLabel(context Context, mounts []*mount.Info) {
-	dockerDev, dockerPartition, err := self.getDockerDeviceMapperInfo(context.Docker)
-	if err != nil {
-		glog.Warningf("Could not get Docker devicemapper device: %v", err)
-	}
-	if len(dockerDev) > 0 && dockerPartition != nil {
-		self.partitions[dockerDev] = *dockerPartition
-		self.labels[LabelDockerImages] = dockerDev
-	} else {
-		self.updateContainerImagesPath(LabelDockerImages, mounts, getDockerImagePaths(context))
-	}
-}
-
-func (self *RealFsInfo) addRktImagesLabel(context Context, mounts []*mount.Info) {
-	if context.RktPath != "" {
-		rktPath := context.RktPath
-		rktImagesPaths := map[string]struct{}{
-			"/": {},
-		}
-		for rktPath != "/" && rktPath != "." {
-			rktImagesPaths[rktPath] = struct{}{}
-			rktPath = filepath.Dir(rktPath)
-		}
-		self.updateContainerImagesPath(LabelRktImages, mounts, rktImagesPaths)
-	}
-}
-*/
-
-// Generate a list of possible mount points for docker image management from the docker root directory.
-// Right now, we look for each type of supported graph driver directories, but we can do better by parsing
-// some of the context from `docker info`.
-func getDockerImagePaths(context Context) map[string]struct{} {
-	dockerImagePaths := map[string]struct{}{
-		"/": {},
-	}
-
-	// TODO(rjnagal): Detect docker root and graphdriver directories from docker info.
-	dockerRoot := context.Docker.Root
-	for _, dir := range []string{"devicemapper", "btrfs", "aufs", "overlay", "zfs"} {
-		dockerImagePaths[path.Join(dockerRoot, dir)] = struct{}{}
-	}
-	for dockerRoot != "/" && dockerRoot != "." {
-		dockerImagePaths[dockerRoot] = struct{}{}
-		dockerRoot = filepath.Dir(dockerRoot)
-	}
-	return dockerImagePaths
-}
-
-// This method compares the mountpoints with possible container image mount points. If a match is found,
+// updateContainerImagesPath compares the mountpoints with possible container image mount points; if a match is found,
 // the label is added to the partition.
 func (self *RealFsInfo) updateContainerImagesPath(label string, mounts []*mount.Info, containerImagePaths map[string]struct{}) {
 	var useMount *mount.Info
@@ -537,30 +436,19 @@ func (self *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, er
 				return nil, err
 			} else {
 				deviceSet[device] = struct{}{}
+
 				fs.DeviceInfo = DeviceInfo{
 					Device: device,
 					Major:  uint(partition.major),
 					Minor:  uint(partition.minor),
 				}
-				fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, for device=%v", device)
-				fs.DiskStats = diskStatsMap[device]
 
 				if diskStats, exist := diskStatsMap[device];  exist {
 					fs.DiskStats = diskStats
 					filesystems = append(filesystems, fs)
-					fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, append filesystem for device=%v", device)
-				} else {
-					fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, stats for device=%v", device, " NOT exist!")
 				}
-
 			}
 		}
-	}
-
-	fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, returned filesystems count=%v", len(filesystems))
-
-	for _, fs:= range filesystems {
-		fmt.Fprintln(os.Stderr, "Debug, Iza in GetFsInfoForPath, returned filesystem=%v", fs.Device)
 	}
 
 	return filesystems, nil
@@ -569,7 +457,6 @@ func (self *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, er
 var partitionRegex = regexp.MustCompile(`^(?:(?:s|xv)d[a-z]+\d*|dm-\d+)$`)
 
 func getDiskStatsMap(diskStatsFile string) (map[string]DiskStats, error) {
-	fmt.Fprintln(os.Stderr, "Debug iza, getDiskStatsMap from file %v", diskStatsFile)
 	diskStatsMap := make(map[string]DiskStats)
 	file, err := os.Open(diskStatsFile)
 	if err != nil {
@@ -618,11 +505,6 @@ func getDiskStatsMap(diskStatsFile string) (map[string]DiskStats, error) {
 			WeightedIoTime:  stats[10],
 		}
 		diskStatsMap[deviceName] = diskStats
-	}
-
-	//todo remove it
-	for devName, stats := range diskStatsMap {
-		fmt.Fprintln(os.Stderr, "Debug, Iza - devName=%v", devName, "; stats=%v", stats)
 	}
 
 	return diskStatsMap, nil
