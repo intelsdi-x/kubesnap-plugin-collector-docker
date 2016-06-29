@@ -1,5 +1,3 @@
-// +build linux
-
 /*
 http://www.apache.org/licenses/LICENSE-2.0.txt
 
@@ -67,46 +65,46 @@ type NetworkInterface struct {
 }
 
 type FilesystemInterface struct {
-	// The block device name associated with the filesystem.
+	// The block device name associated with the filesystem
 	Device string `json:"device_name"`
 
-	// Type of the filesystem.
+	// Type of the filesystem
 	Type string `json:"type"`
 
-	// Number of bytes that can be consumed by the container on this filesystem.
+	// Number of bytes that can be consumed on this filesystem
 	Limit uint64 `json:"capacity"`
 
-	// Number of bytes that is consumed by the container on this filesystem.
+	// Number of bytes that is consumed on this filesystem
 	Usage uint64 `json:"usage"`
 
-	// Base Usage that is consumed by the container's writable layer.
+	// Base Usage that is consumed by the container's writable layer
 	BaseUsage uint64 `json:"base_usage"`
 
-	// Number of bytes available for non-root user.
+	// Number of bytes available for non-root user
 	Available uint64 `json:"available"`
 
 	// Number of available Inodes
 	InodesFree uint64 `json:"inodes_free"`
 
-	// This is the total number of reads completed successfully.
+	// This is the total number of reads completed successfully
 	ReadsCompleted uint64 `json:"reads_completed"`
 
-	// This is the total number of reads merged successfully. This field lets you know how often this was done.
+	// This is the total number of reads merged successfully. This field lets you know how often this was done
 	ReadsMerged uint64 `json:"reads_merged"`
 
-	// This is the total number of sectors read successfully.
+	// This is the total number of sectors read successfully
 	SectorsRead uint64 `json:"sectors_read"`
 
 	// This is the total number of milliseconds spent reading
 	ReadTime uint64 `json:"read_time"`
 
-	// This is the total number of writes completed successfully.
+	// This is the total number of writes completed successfully
 	WritesCompleted uint64 `json:"writes_completed"`
 
-	// This is the total number of writes merged successfully. This field lets you know how often this was done.
+	// This is the total number of writes merged successfully
 	WritesMerged uint64 `json:"writes_merged"`
 
-	// This is the total number of sectors written successfully.
+	// This is the total number of sectors written successfully
 	SectorsWritten uint64 `json:"sectors_written"`
 
 	// This is the total number of milliseconds spent writing
@@ -141,8 +139,8 @@ func NewStatistics() *Statistics {
 }
 
 type TcpInterface struct {
-	Tcp  TcpStat `json:"tcp"`  // TCP connection stats (Established, Listen...)
-	Tcp6 TcpStat `json:"tcp6"` // TCP6 connection stats (Established, Listen...)
+	Tcp  TcpStat `json:"tcp"`  // TCP connection stats (Established, Listen, etc.)
+	Tcp6 TcpStat `json:"tcp6"` // TCP6 connection stats (Established, Listen, etc.)
 }
 
 type TcpStat struct {

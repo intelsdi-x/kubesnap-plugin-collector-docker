@@ -18,10 +18,10 @@ import (
 
 	"github.com/docker/docker/pkg/mount"
 	"github.com/fsouza/go-dockerclient"
-	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
-	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/mounts"
-	zfs "github.com/mistifyio/go-zfs"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/config"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/mounts"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
+	zfs "github.com/mistifyio/go-zfs"
 )
 
 const (
@@ -44,7 +44,7 @@ const (
 
 	userLayerFirstVersionMaj = 1
 	userLayerFirstVersionMin = 10
-	userLayerIdFile = "mount-id"
+	userLayerIdFile          = "mount-id"
 )
 
 var Col collector
@@ -443,7 +443,7 @@ func (self *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, er
 					Minor:  uint(partition.minor),
 				}
 
-				if diskStats, exist := diskStatsMap[device];  exist {
+				if diskStats, exist := diskStatsMap[device]; exist {
 					fs.DiskStats = diskStats
 					filesystems = append(filesystems, fs)
 				}
