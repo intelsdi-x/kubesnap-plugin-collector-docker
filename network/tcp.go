@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/mounts"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
 )
 
 func TcpStatsFromProc(rootFs string, pid int) (wrapper.TcpStat, error) {

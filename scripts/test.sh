@@ -21,8 +21,8 @@ if [[ $TEST_SUITE == "unit" ]]; then
         go get github.com/stretchr/testify/mock
 	
 	COVERALLS_TOKEN=t47LG6BQsfLwb9WxB56hXUezvwpED6D11
-	TEST_DIRS="main.go ./docker ./client"
-	VET_DIRS=". ./docker/... ./client/..."
+	TEST_DIRS="main.go ./docker ./client ./config ./fs ./mounts ./network"
+	VET_DIRS=". ./docker/... ./client/... ./config/... ./fs/... ./mounts/... ./network/... ./wrapper/..."
 
 	set -e
 

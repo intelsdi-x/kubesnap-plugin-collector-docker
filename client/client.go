@@ -1,5 +1,3 @@
-// +build linux
-
 /*
 http://www.apache.org/licenses/LICENSE-2.0.txt
 
@@ -28,20 +26,21 @@ import (
 	"path/filepath"
 
 	"github.com/fsouza/go-dockerclient"
+	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/config"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/fs"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/network"
 	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/wrapper"
 	"github.com/intelsdi-x/snap-plugin-utilities/ns"
 	"github.com/opencontainers/runc/libcontainer/cgroups"
-	"strings"
 	"strconv"
-	"github.com/intelsdi-x/kubesnap-plugin-collector-docker/config"
+	"strings"
 )
 
-const endpoint string = "unix:///var/run/docker.sock"
-const dockerVersionKey string = "Version"
-
 const (
+	endpoint         string = "unix:///var/run/docker.sock"
+	dockerVersionKey string = "Version"
+
+	// todo allow gathering memory limit
 	memLimitInBytesCounter     = "memory.limit_in_bytes"
 	memSwapLimitInBytesCounter = "memory.memsw.limit_in_bytes"
 
@@ -74,7 +73,7 @@ func init() {
 		dc := NewDockerClient()
 		version, err := dc.Version()
 		if err != nil {
-		panic(err)
+			panic(err)
 		}
 		return version
 	}
@@ -101,7 +100,7 @@ func (dc *dockerClient) InspectContainer(id string) (*docker.Container, error) {
 
 // Version returns version of docker engine
 func (dc *dockerClient) Version() (version []int, _ error) {
-	version = []int {0, 0}
+	version = []int{0, 0}
 	env, err := dc.cl.Version()
 	if err != nil {
 		return version, err
@@ -119,7 +118,7 @@ func (dc *dockerClient) Version() (version []int, _ error) {
 			continue
 		}
 		versionSplit := strings.Split(kvs[1], ".")
-		version := []int {parseInt(versionSplit[0], 0), parseInt(versionSplit[1], 0)}
+		version := []int{parseInt(versionSplit[0], 0), parseInt(versionSplit[1], 0)}
 		return version, nil
 	}
 	return version, nil
@@ -192,7 +191,6 @@ func GetSubsystemPath(subsystem string, id string) (string, error) {
 // GetStatsFromContainer returns docker containers stats: cgroups stats (cpu usage, memory usage, etc.) and network stats (tx_bytes, rx_bytes etc.)
 // Notes: incoming container id has to be full-length to be able to inspect container
 func (dc *dockerClient) GetStatsFromContainer(id string, collectFs bool) (*wrapper.Statistics, error) {
-	//fmt.Fprintln(os.Stderr, "Debug, GetStatsContainer, START")
 	var (
 		stats      = wrapper.NewStatistics()
 		groupWrap  = wrapper.Cgroups2Stats // wrapper for cgroup name and interface for stats extraction
@@ -202,7 +200,6 @@ func (dc *dockerClient) GetStatsFromContainer(id string, collectFs bool) (*wrapp
 	container := &docker.Container{}
 
 	var pid int
-
 
 	if !isHost(id) {
 		if !isFullLengthID(id) {
@@ -258,12 +255,12 @@ func (dc *dockerClient) GetStatsFromContainer(id string, collectFs bool) (*wrapp
 	}
 	stats.CgroupStats.MemoryStats.Stats["working_set"] = workingSet
 
-	/* todo ask about it
+	/* todo support memory limit
 	// gather memory limit
-	if cgPath, gotMem := wrapperPaths["memory"]; gotMem {
+	if cgPath, gotMem := groupWrap["memory"]; gotMem {
 		groupPath, _ := GetSubsystemPath("memory", cgPath)
-		memLimit, _ := common.ReadUintFromFile(filepath.Join(groupPath, memLimitInBytesCounter), 64)
-		memSwLimit, _ := common.ReadUintFromFile(filepath.Join(groupPath, memSwapLimitInBytesCounter), 64)
+		memLimit, _ := readUintFromFile(filepath.Join(groupPath, memLimitInBytesCounter), 64)
+		memSwLimit, _ := readUintFromFile(filepath.Join(groupPath, memSwapLimitInBytesCounter), 64)
 		stats.CgroupStats.MemoryStats.Stats[memLimitInBytesKey] = memLimit
 		stats.CgroupStats.MemoryStats.Stats[memSwapLimitInBytesKey] = memSwLimit
 	}

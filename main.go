@@ -4,7 +4,7 @@
 http://www.apache.org/licenses/LICENSE-2.0.txt
 
 
-Copyright 2015 Intel Corporation
+Copyright 2015-2016 Intel Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,8 +29,6 @@ import (
 )
 
 func main() {
-
-	dockerInst := docker.New()
 	plugin.Start(
 		plugin.NewPluginMeta(
 			docker.NS_PLUGIN,
@@ -39,7 +37,7 @@ func main() {
 			[]string{},
 			[]string{plugin.SnapGOBContentType},
 			plugin.ConcurrencyCount(1)),
-			dockerInst,
+			docker.New(),
 			os.Args[1],
 	)
 }

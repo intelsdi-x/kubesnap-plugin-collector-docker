@@ -69,7 +69,7 @@ This builds the plugin in `/build/rootfs/`
 
 
 #### Configuration in Docker
-This plugin retriving data from '/sys/fs/cgroup' and '/proc'. If You would like to run this plugin in Docker container, please ensure that there are mounted
+This plugin retrieving data from '/sys/fs/cgroup' and '/proc'. If You would like to run this plugin in Docker container, please ensure that there are mounted
 
 ```
 docker run -it -v /sys/fs/cgroup:/sys/fs/cgroup -v /proc:/proc_host
