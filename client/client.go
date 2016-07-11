@@ -34,6 +34,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -60,6 +61,8 @@ type DockerClientInterface interface {
 
 type dockerClient struct {
 	cl *docker.Client
+	inspectCache map[string]*docker.Container
+	inspectMutex sync.Mutex
 }
 
 type deviceInfo struct {
@@ -87,7 +90,9 @@ func NewDockerClient() *dockerClient {
 		panic(err)
 	}
 
-	return &dockerClient{cl: client}
+	return &dockerClient{cl: client,
+		inspectCache: map[string]*docker.Container {},
+	}
 }
 
 func (dc *dockerClient) FindCgroupMountpoint(subsystem string) (string, error) {
@@ -95,7 +100,23 @@ func (dc *dockerClient) FindCgroupMountpoint(subsystem string) (string, error) {
 }
 
 func (dc *dockerClient) InspectContainer(id string) (*docker.Container, error) {
-	return dc.cl.InspectContainer(id)
+	dc.inspectMutex.Lock()
+	defer dc.inspectMutex.Unlock()
+	if info, haveInfo := dc.inspectCache[id]; !haveInfo {
+		if info, haveInfo = dc.inspectCache[id]; haveInfo {
+			// double-locking is fine here, as side effects are harmless
+			return info, nil
+		}
+		var err error
+		if info, err = dc.cl.InspectContainer(id); err != nil {
+			return nil, err
+		} else {
+			dc.inspectCache[id] = info
+			return info, nil
+		}
+	} else {
+		return info, nil
+	}
 }
 
 // Version returns version of docker engine
