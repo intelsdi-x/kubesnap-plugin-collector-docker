@@ -17,6 +17,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
+#Status
+
+This repository is no longer being actively maintained by Intel. Work has instead shifted to the [snap-plugin-collector-docker](https://github.com/intelsdi-x/snap-plugin-collector-docker) repository.
+
 # snap collector plugin - Docker
 
 This plugin collects runtime metrics from Docker containers and its host machine. It gathers information about resource usage and performance characteristics. 
@@ -176,9 +180,6 @@ NAMESPACE                                                                    DAT
 (Keys `ctrl+c` terminate task watcher)
 
 These data are published to file and stored there (in this example in `/tmp/snap-docker-file.log`).
-
-### Roadmap
-There isn't a current roadmap for this plugin, but it is in active development. As we launch this plugin, we do not have any outstanding requirements for the next release. If you have a feature request, please add it as an [issue](https://github.com/intelsdi-x/kubesnap-plugin-collector-docker/issues/new) and/or submit a [pull request](https://github.com/intelsdi-x/kubesnap-plugin-collector-docker/pulls).
 
 ## Community Support
 This repository is one of **many** plugins in the **snap framework**: a powerful telemetry framework. See the full project at http://github.com/intelsdi-x/snap To reach out to other users, head to the [main framework](https://github.com/intelsdi-x/snap#community-support)
