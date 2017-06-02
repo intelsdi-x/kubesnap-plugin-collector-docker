@@ -17,7 +17,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-#Status
+# Status
 
 This repository is no longer being actively maintained by Intel. Work has instead shifted to the [snap-plugin-collector-docker](https://github.com/intelsdi-x/snap-plugin-collector-docker) repository.
 
